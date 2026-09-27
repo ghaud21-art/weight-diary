@@ -1,6 +1,6 @@
 import { api } from '../api.js';
 import { icon } from '../icons.js';
-import { state, upsertRecord, recordOn, cycleStats, hasBody } from '../store.js';
+import { state, upsertRecord, recordOn, cycleStats, hasBody, setPeriods, applyPeriodLocal } from '../store.js';
 import { $, $$, esc, num, fix1, comma, addDays, fmtLong, toast } from '../utils.js';
 import { dayStatus } from '../calorie.js';
 import { periodMarks, nextLabel } from '../cycle.js';
@@ -74,11 +74,12 @@ async function paint(view) {
   const mi = monthInfo(ym);
   $('#cal-title', view).textContent = `${mi.y}년 ${mi.m}월`;
   drawGrid(view, mi);
+  if (mi.first >= addDays(state.today, -60)) loaded.add(ym);
   if (!loaded.has(ym)) {
     try {
       const res = await api.getRange(mi.first, mi.last);
       res.records.forEach(upsertRecord);
-      state.periods = res.periods;
+      setPeriods(res.periods);
       loaded.add(ym);
       if (state.calMonth === ym && $('#cal-grid', view)) drawGrid(view, mi);
     } catch (err) {
@@ -201,39 +202,51 @@ function openSheet(view, date) {
   $('#d-exercise', dlg).addEventListener('input', judgeLine);
   judgeLine();
 
-  $('#d-save', dlg).addEventListener('click', async (e) => {
-    const btn = e.currentTarget;
-    btn.disabled = true;
+  $('#d-save', dlg).addEventListener('click', async () => {
+    const intake = num($('#d-intake', dlg).value), exercise = num($('#d-exercise', dlg).value);
+    const before = recordOn(date);
+    const base = before || { date, weight: null, muscle_mass: null, body_fat_pct: null, mood: '', mood_note: '', medications_taken: [], coach_feedback: null, kcal_goal: null };
+    upsertRecord({ ...base, intake_kcal: intake, exercise_kcal: exercise, kcal_goal: base.kcal_goal ?? num(state.settings.calorie_net_goal) });
+    dlg.close();
+    drawGrid(view, monthInfo(state.calMonth));
+    toast('칼로리를 저장했어요');
     try {
-      const saved = await api.saveDay({ date, intake_kcal: num($('#d-intake', dlg).value), exercise_kcal: num($('#d-exercise', dlg).value) });
-      upsertRecord(saved);
-      toast('칼로리를 저장했어요');
-      dlg.close();
-      drawGrid(view, monthInfo(state.calMonth));
+      upsertRecord(await api.saveDay({ date, intake_kcal: intake, exercise_kcal: exercise }));
     } catch (err) {
+      if (before) upsertRecord(before);
+      else state.records = state.records.filter((r) => r.date !== date);
       toast('저장 실패: ' + err.message);
-    } finally {
-      btn.disabled = false;
     }
+    if ($('#cal-grid', view)) drawGrid(view, monthInfo(state.calMonth));
   });
 
   const onPeriod = (type) => async (e) => {
     const box = e.currentTarget;
-    box.disabled = true;
+    const on = box.checked;
+    let before;
     try {
-      const res = await api.setPeriod(date, type, box.checked);
-      state.periods = res.periods;
-      Object.assign(state.settings, res.settings);
-      toast(box.checked ? (type === 'start' ? '생리 시작일을 기록했어요' : '생리 종료일을 기록했어요') : '기록을 지웠어요');
+      before = applyPeriodLocal(date, type, on);
+    } catch (err) {
+      box.checked = !on;
+      return toast(err.message);
+    }
+    drawGrid(view, monthInfo(state.calMonth));
+    renderSub(view);
+    toast(on ? (type === 'start' ? '생리 시작일을 기록했어요' : '생리 종료일을 기록했어요') : '기록을 지웠어요');
+    try {
+      const res = await api.setPeriod(date, type, on);
+      setPeriods(res.periods, res.settings);
+    } catch (err) {
+      setPeriods(before);
+      box.checked = !on;
+      toast('저장 실패: ' + err.message);
+    }
+    if ($('#cal-grid', view)) {
       drawGrid(view, monthInfo(state.calMonth));
       renderSub(view);
-    } catch (err) {
-      box.checked = !box.checked;
-      toast(err.message);
-    } finally {
-      box.disabled = false;
     }
   };
+
   $('#p-start', dlg).addEventListener('change', onPeriod('start'));
   $('#p-end', dlg).addEventListener('change', onPeriod('end'));
 

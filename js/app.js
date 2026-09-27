@@ -1,9 +1,9 @@
 import { CONFIG, PREVIEW_MODE } from './config.js';
 import { api, setAuthHandler } from './api.js';
 import { getToken, signIn, signOut } from './auth.js';
-import { state, load, applyTheme } from './store.js';
+import { state, load, applyTheme, readCache, clearCache } from './store.js';
 import { icon } from './icons.js';
-import { $, $$, esc } from './utils.js';
+import { $, $$, esc, toast } from './utils.js';
 import { initPwa } from './pwa.js';
 import * as record from './screens/record.js';
 import * as journey from './screens/journey.js';
@@ -111,16 +111,50 @@ async function boot() {
     setAuthHandler(() => (relogin ||= showLogin({ overlay: true }).finally(() => (relogin = null))));
   }
 
-  view.innerHTML = '<div class="stack" style="padding-top:60px"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>';
-  try {
-    load(await api.bootstrap());
-  } catch (e) {
-    if (e.code === 'forbidden') return showBlocked();
-    return showError(e.message);
+  // 기기에 저장된 마지막 데이터가 있으면 바로 화면을 그리고, 최신 데이터는 뒤에서 받아옴
+  const cached = readCache();
+  let started = false;
+  const start = () => {
+    if (started) return;
+    started = true;
+    applyTheme(state.settings.theme);
+    window.addEventListener('hashchange', route);
+    route();
+  };
+  if (cached) {
+    load(cached);
+    start();
+  } else {
+    view.innerHTML = '<div class="stack" style="padding-top:60px"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>';
   }
-  applyTheme(state.settings.theme);
-  window.addEventListener('hashchange', route);
+
+  try {
+    const fresh = await api.bootstrap();
+    const changed = !cached || JSON.stringify(fresh.records) !== JSON.stringify(cached.records) ||
+      JSON.stringify(fresh.settings) !== JSON.stringify(cached.settings) ||
+      JSON.stringify(fresh.medications) !== JSON.stringify(cached.medications) ||
+      JSON.stringify(fresh.periods) !== JSON.stringify(cached.periods);
+    load(fresh);
+    if (!started) start();
+    else if (changed) softRefresh();
+  } catch (e) {
+    if (e.code === 'forbidden') {
+      clearCache();
+      return showBlocked();
+    }
+    if (!started) return showError(e.message);
+    toast('최신 기록을 불러오지 못해 저장된 기록을 보여드려요');
+  }
+}
+
+/** 새 데이터가 도착하면 현재 화면을 다시 그림 — 입력 중이거나 대화 중이면 건드리지 않음 */
+function softRefresh() {
+  const name = location.hash.replace(/^#\/?/, '').split('/')[0];
+  const typing = document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
+  if (name === 'chat' || name === 'settings' || typing || document.querySelector('dialog[open]')) return;
+  const y = window.scrollY;
   route();
+  window.scrollTo(0, y);
 }
 
 boot();

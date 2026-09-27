@@ -1,5 +1,5 @@
 // 건강일기 서비스 워커 — 앱 화면 파일만 캐시 (기록 데이터·GAS 요청은 캐시하지 않음)
-const CACHE = 'health-diary-v1';
+const CACHE = 'health-diary-v2';
 const SHELL = [
   './',
   './index.html',

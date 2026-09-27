@@ -72,7 +72,16 @@ export function calcPlan({ weight, fatPct, heightCm, age, activity, goalWeight, 
 
   const needDeficit = (diffKg * KCAL_PER_KG) / days;
   const deficit = Math.min(needDeficit, maxDeficit);
+  // 목표 날짜를 그대로 지키려면 필요한 칼로리 (안전 하한선을 적용하기 전 값)
+  const goalExercise = Math.min(EXERCISE_MAX, round10(needDeficit * EXERCISE_SHARE));
+  const goalPlan = {
+    target: round10(tdee - (needDeficit - goalExercise)),
+    exercise: goalExercise,
+    netGoal: round10(tdee - needDeficit),
+    weeklyLoss: (needDeficit * 7) / KCAL_PER_KG,
+  };
   return finish({
+    goalPlan,
     ...base,
     status: needDeficit > maxDeficit + 1 ? 'too_fast' : 'ok',
     needDeficit, days, diffKg, goalWeight: gw,
@@ -88,7 +97,10 @@ export function planSummary(plan, goalWeight, goalDate) {
     `(하루 소비 ${comma(plan.tdee)}kcal = 기초대사 ${comma(plan.bmr)} + 활동 ${comma(plan.activityKcal)} + 소화 ${comma(plan.tef)}, 단백질 약 ${plan.protein}g` +
     `${plan.bmi ? `, BMI ${plan.bmi.bmi.toFixed(1)}` : ''})`;
   if (plan.status === 'ok') return `${head}, 목표 ${goalWeight}kg까지 ${goalDate}, 주당 약 ${plan.weeklyLoss.toFixed(2)}kg 감량 속도`;
-  if (plan.status === 'too_fast') return `${head}, 목표 날짜(${goalDate})는 안전 속도를 넘어 안전 하한선에 맞춤. 안전 속도 도달 예상일 ${plan.safeDate}`;
+  if (plan.status === 'too_fast') {
+    return `${head} — 추천 칼로리. 목표 날짜(${goalDate})를 그대로 지키려면 음식 ${comma(plan.goalPlan.target)}kcal·운동 ${comma(plan.goalPlan.exercise)}kcal가 필요해 ` +
+      `안전 하한선(기초대사량·1,200kcal, 주당 체중 1%)을 넘음. 추천 칼로리로 가면 ${plan.safeDate}쯤 도달`;
+  }
   if (plan.status === 'reached') return `${head}, 목표 체중 도달 — 유지 모드`;
   return head;
 }

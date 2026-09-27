@@ -1,10 +1,12 @@
 import { api } from '../api.js';
 import { icon } from '../icons.js';
-import { state, activeMeds, morningOn as recordOn, latestRecord, upsertRecord, saveSettings, cycleStats } from '../store.js';
+import { state, activeMeds, morningOn as recordOn, latestRecord, upsertRecord, saveSettings, cycleStats, setMeds, setPeriods, applyPeriodLocal } from '../store.js';
 import { cycleLabel, nextLabel } from '../cycle.js';
 import { $, $$, esc, num, fix1, comma, fmtLong, greeting, movingAvg, debounce, toast, resizeImage } from '../utils.js';
 import { calcPlan, planSummary, safeDateLabel, ACTIVITY } from '../calorie.js';
 import { topbar, previewBanner, timingTone } from './common.js';
+
+let feedbackPending = false; // 저장은 끝났고 코치 피드백을 만드는 중
 
 const MOODS = [
   { v: 'good', label: '좋음', svg: icon.moodGood },
@@ -161,6 +163,9 @@ function previewHtml() {
   if (!rec) {
     body = '아침 기록을 저장하면 코치가 오늘의 몸 상태를 풀어서 설명해드려요.';
     links = `<a class="link-btn" href="#/chat">${icon.chat()} AI 코치와 대화하기</a>`;
+  } else if (!fb && feedbackPending) {
+    body = '코치가 오늘의 피드백을 쓰고 있어요. 잠시만 기다려주세요.';
+    links = `<span class="link-btn muted"><span class="spinner dark"></span> 작성 중…</span>`;
   } else if (!fb) {
     body = '피드백을 아직 만들지 못했어요. 다시 시도해볼까요?';
     links = `<button type="button" class="link-btn peach" id="retry-fb">${icon.refresh()} 피드백 다시 받기</button>
@@ -281,17 +286,18 @@ function bindMeds(view) {
     const fd = new FormData(form);
     const med = { name: fd.get('name').trim(), timing: fd.get('timing').trim(), ingredient_dose: fd.get('ingredient_dose').trim() };
     if (!med.name) return;
-    const btn = $('button', form);
-    btn.disabled = true;
+    const before = state.meds;
+    setMeds(before.concat({ ...med, id: 'tmp_' + Date.now(), is_default: false, active: true }));
+    form.reset();
+    list.innerHTML = medListHtml(d);
+    toast(`${med.name}을(를) 목록에 추가했어요`);
     try {
-      state.meds = await api.addMed(med);
-      form.reset();
+      setMeds(await api.addMed(med));
       list.innerHTML = medListHtml(d);
-      toast(`${med.name}을(를) 목록에 추가했어요`);
     } catch (err) {
+      setMeds(before);
+      list.innerHTML = medListHtml(d);
       toast('추가 실패: ' + err.message);
-    } finally {
-      btn.disabled = false;
     }
   });
 }
@@ -306,10 +312,17 @@ async function onSave(view) {
     return;
   }
   const btns = $$('[data-save]', view);
-  btns.forEach((b) => {
-    b.disabled = true;
-    b.innerHTML = '<span class="spinner"></span> 코치가 피드백을 쓰고 있어요…';
+  const setBtns = (busy) => btns.forEach((b) => {
+    b.disabled = busy;
+    b.innerHTML = busy ? '<span class="spinner"></span> 저장하는 중…' : saveLabel(!!recordOn(state.today));
   });
+  setBtns(true);
+  const refreshPreview = () => {
+    const box = $('#coach-preview', view);
+    if (!box) return;
+    box.innerHTML = previewHtml();
+    bindRetry(view);
+  };
   try {
     const res = await api.saveRecord({
       date: d.date,
@@ -319,20 +332,28 @@ async function onSave(view) {
       mood: d.mood,
       mood_note: d.mood_note.trim(),
       medications_taken: d.taken,
+      skipFeedback: true,
     });
     upsertRecord(res.record);
-    toast(res.feedbackError ? '기록은 저장했지만 피드백 생성에 실패했어요' : '저장했어요. 오늘의 피드백이 도착했어요');
-    $('#coach-preview', view).innerHTML = previewHtml();
+    feedbackPending = true;
+    toast('저장했어요. 코치가 피드백을 쓰고 있어요');
+    setBtns(false);
+    refreshPreview();
     $('#goal-card', view).innerHTML = goalHtml();
-    bindRetry(view);
     $('#coach-preview', view).scrollIntoView({ behavior: 'smooth', block: 'center' });
   } catch (err) {
     toast('저장 실패: ' + err.message);
+    setBtns(false);
+    return;
+  }
+  try {
+    upsertRecord(await api.regenerateFeedback(d.date));
+    toast('오늘의 코치 피드백이 도착했어요');
+  } catch (err) {
+    toast('피드백을 만들지 못했어요: ' + err.message);
   } finally {
-    btns.forEach((b) => {
-      b.disabled = false;
-      b.textContent = saveLabel(!!recordOn(state.today));
-    });
+    feedbackPending = false;
+    refreshPreview();
   }
 }
 
@@ -441,11 +462,29 @@ function kcalHtml(p, input) {
 
   const losing = p.status === 'ok' || p.status === 'too_fast';
   let notice = '';
+  let compare = '';
   if (p.status === 'too_fast') {
+    const g = p.goalPlan;
+    const kcal = (v) => (v > 0 ? `${comma(v)}<small>kcal</small>` : '0<small>kcal 이하</small>');
+    compare = `
+      <div class="rx-compare">
+        <div class="rx-col goal">
+          <p class="k">목표 날짜대로라면</p>
+          <strong>${kcal(g.target)}</strong>
+          <p class="s">운동 ${comma(g.exercise)}kcal · 주당 −${g.weeklyLoss.toFixed(2)}kg</p>
+          <span class="chip clay">안전 하한선 아래</span>
+        </div>
+        <div class="rx-col rec">
+          <p class="k">추천 칼로리</p>
+          <strong>${kcal(p.target)}</strong>
+          <p class="s">운동 ${comma(p.exercise)}kcal · 주당 −${p.weeklyLoss.toFixed(2)}kg</p>
+          <span class="chip">${esc(safeDateLabel(p).replace(/ \S+요일$/, ''))}쯤 도달</span>
+        </div>
+      </div>`;
     notice = `
       <div class="notice">
-        목표 날짜까지 가려면 하루 ${comma(p.needDeficit)}kcal를 줄여야 해서 안전한 속도(주당 체중의 1%, 기초대사량 이상 섭취)를 넘어요.
-        처방은 안전 하한선에 맞췄어요. 이 속도라면 <strong>${esc(safeDateLabel(p))}</strong>쯤 도달해요.
+        목표 날짜를 지키려면 하루 ${comma(p.needDeficit)}kcal를 줄여야 해요. 이건 안전 하한선(기초대사량 ${comma(p.bmr)}kcal·최소 1,200kcal 이상 섭취, 주당 체중의 1% 이내)보다 빠른 속도라,
+        아래 처방은 <strong>추천 칼로리</strong> 기준이에요.
         <br><button type="button" class="link-btn" id="k-fix-date">목표 날짜를 ${esc(safeDateLabel(p))}로 바꾸기</button>
       </div>`;
   } else if (p.status === 'reached') {
@@ -461,15 +500,17 @@ function kcalHtml(p, input) {
   const pct = (v) => ((v / p.tdee) * 100).toFixed(1);
   const row = (k, v, cls = '') => `<tr class="${cls}"><th scope="row">${k}</th><td>${v}</td></tr>`;
   return `
+    ${compare}
+    ${compare ? notice : ''}
     <div class="rx-grid">
       <div class="rx">
         <span class="badge-ico accent">${icon.fork()}</span>
-        <p>하루 동안 섭취할<br>음식 칼로리</p>
+        <p>${compare ? '추천' : '하루 동안'} 섭취할<br>음식 칼로리</p>
         <strong>${comma(p.target)}<small>kcal</small></strong>
       </div>
       <div class="rx">
         <span class="badge-ico peach">${icon.flame()}</span>
-        <p>하루 동안 소모할<br>운동 칼로리</p>
+        <p>${compare ? '추천' : '하루 동안'} 소모할<br>운동 칼로리</p>
         <strong>${comma(p.exercise)}<small>kcal</small></strong>
       </div>
     </div>
@@ -496,7 +537,8 @@ function kcalHtml(p, input) {
         ${losing ? row('하루 줄일 칼로리', `−${comma(p.deficit)} kcal`) : ''}
         ${losing ? row('식단으로', `−${comma(p.deficit - p.exercise)} kcal`, 'sub') : ''}
         ${losing ? row('운동으로', `−${comma(p.exercise)} kcal`, 'sub') : ''}
-        ${row('음식 섭취 처방', `${comma(p.target)} kcal`, 'sum')}
+        ${compare ? row('목표 날짜 기준 섭취', `${comma(Math.max(0, p.goalPlan.target))} kcal`) : ''}
+        ${row(compare ? '추천 음식 섭취' : '음식 섭취 처방', `${comma(p.target)} kcal`, 'sum')}
         ${row('순 섭취 목표 (섭취 − 운동)', `${comma(p.netGoal)} kcal`)}
         ${losing ? row('주당 예상 감량', `${p.weeklyLoss.toFixed(2)} kg`) : ''}
         ${losing ? row('목표까지', `D-${p.days} · ${p.diffKg.toFixed(1)} kg`) : ''}
@@ -504,7 +546,7 @@ function kcalHtml(p, input) {
         ${p.bmi ? row('BMI', `${p.bmi.bmi.toFixed(1)} · ${p.bmi.label}`) : ''}
       </tbody>
     </table>
-    ${notice}
+    ${compare ? '' : notice}
     <p class="footnote">${esc(p.method)}${input.fatPct ? ` · 체지방률 ${fix1(input.fatPct)}%` : ''} 기준 추정치예요.
       달력에서는 순 섭취가 ${comma(p.netGoal)}kcal 이하면 목표 달성으로 표시돼요. 혈당 강하제를 복용 중이라면 섭취량을 크게 줄이기 전에 주치의와 상의해주세요.</p>`;
 }
@@ -531,21 +573,30 @@ function periodHtml() {
 
 function bindPeriod(view) {
   const card = $('#period-card', view);
+  const repaint = () => {
+    card.innerHTML = periodHtml();
+    $('.page-title p', view).innerHTML = subtitleHtml();
+  };
   card.addEventListener('click', async (e) => {
     const btn = e.target.closest('[data-period]');
     if (!btn) return;
+    const type = btn.dataset.period;
     const on = btn.getAttribute('aria-pressed') !== 'true';
-    btn.disabled = true;
+    let before;
     try {
-      const res = await api.setPeriod(state.today, btn.dataset.period, on);
-      state.periods = res.periods;
-      Object.assign(state.settings, res.settings);
-      card.innerHTML = periodHtml();
-      $('.page-title p', view).innerHTML = subtitleHtml();
-      toast(on ? '기록했어요' : '기록을 지웠어요');
+      before = applyPeriodLocal(state.today, type, on);
     } catch (err) {
-      toast(err.message);
-      btn.disabled = false;
+      return toast(err.message);
+    }
+    repaint();
+    toast(on ? '기록했어요' : '기록을 지웠어요');
+    try {
+      const res = await api.setPeriod(state.today, type, on);
+      setPeriods(res.periods, res.settings);
+    } catch (err) {
+      setPeriods(before);
+      repaint();
+      toast('저장 실패: ' + err.message);
     }
   });
 }

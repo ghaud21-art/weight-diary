@@ -3,7 +3,7 @@ import { icon } from '../icons.js';
 import { PREVIEW_MODE } from '../config.js';
 import { signOut, currentEmail } from '../auth.js';
 import { resetPreview } from '../mock.js';
-import { state, applyTheme, saveSettings, cycleStats } from '../store.js';
+import { state, applyTheme, saveSettings, cycleStats, setMeds, clearCache } from '../store.js';
 import { $, $$, esc, toast, fmtLong } from '../utils.js';
 import { backbar } from './common.js';
 import { isInstalled, canPrompt, isIOS, promptInstall, onInstallChange } from '../pwa.js';
@@ -52,11 +52,9 @@ export function render(view) {
         <p class="hint">목표 체중·날짜는 기록 화면의 칼로리 처방 카드에서 정해요.</p>
       </section>
 
-      <section class="card r18 flat" style="padding:0">
-        <button type="button" class="disclosure" aria-expanded="false" aria-controls="med-manage" id="med-toggle">
-          <span>복용약 목록 관리</span>${icon.chevron()}
-        </button>
-        <div class="med-manage" id="med-manage" hidden></div>
+      <section class="card r18 flat" aria-labelledby="h-meds" style="padding:16px 0 0">
+        <h2 id="h-meds" style="font-size:14px;padding:0 16px;margin-bottom:12px">복용약 관리</h2>
+        <div class="med-manage" id="med-manage"></div>
       </section>
 
       <section class="card r18 flat" style="padding:6px 16px" aria-label="알림">
@@ -100,14 +98,7 @@ export function render(view) {
   $('#n-med', view).addEventListener('change', (e) => saveSettings({ notification_med: String(e.target.checked) }));
 
   // 복용약 관리
-  const toggle = $('#med-toggle', view);
-  const panel = $('#med-manage', view);
-  toggle.addEventListener('click', () => {
-    const open = toggle.getAttribute('aria-expanded') !== 'true';
-    toggle.setAttribute('aria-expanded', String(open));
-    panel.hidden = !open;
-    if (open) paintMeds(panel);
-  });
+  paintMeds($('#med-manage', view));
 
   // 앱 설치
   const card = $('#install-card', view);
@@ -138,6 +129,7 @@ export function render(view) {
       location.reload();
       return;
     }
+    clearCache();
     await signOut();
     location.reload();
   });
@@ -181,7 +173,7 @@ function field(key, label, type, value, unit, cls = '') {
 }
 
 function paintMeds(panel) {
-  panel.innerHTML = state.meds.map((m) => `
+  const items = state.meds.map((m) => `
     <div class="med-edit ${m.active ? '' : 'off'}" data-id="${esc(m.id)}">
       <div class="row">
         <input class="input" data-f="name" value="${esc(m.name)}" aria-label="약 이름" maxlength="60">
@@ -189,39 +181,69 @@ function paintMeds(panel) {
       </div>
       <input class="input" data-f="ingredient_dose" value="${esc(m.ingredient_dose)}" placeholder="성분 · 용량" aria-label="성분 · 용량" maxlength="80">
       <div class="acts">
-        ${m.active
-          ? `<button type="button" class="btn ghost" data-act="delete">${m.is_default ? '목록에서 숨기기' : '삭제'}</button>`
-          : '<button type="button" class="btn ghost" data-act="restore">다시 사용</button>'}
+        <label class="show-toggle"><input type="checkbox" class="switch" data-act="active" ${m.active ? 'checked' : ''}>기록 화면에 표시</label>
+        <button type="button" class="btn ghost" data-act="delete">삭제</button>
         <button type="button" class="btn" data-act="save">저장</button>
       </div>
-    </div>`).join('') + '<p class="hint" style="margin:0">새 약은 기록 화면의 복용약 카드에서 추가할 수 있어요.</p>';
+    </div>`).join('');
 
-  panel.onclick = async (e) => {
+  panel.innerHTML = `${items || '<p class="hint" style="margin:0">등록된 약이 없어요.</p>'}
+    <form class="med-edit med-new" id="med-new">
+      <p class="t">새 약 추가</p>
+      <div class="row">
+        <input class="input" name="name" placeholder="약 이름" aria-label="새 약 이름" maxlength="60" required>
+        <input class="input" name="timing" placeholder="복용 타이밍" aria-label="새 약 복용 타이밍" maxlength="40" style="flex:0 0 104px">
+      </div>
+      <input class="input" name="ingredient_dose" placeholder="성분 · 용량 (예: 로수바스타틴 10mg)" aria-label="새 약 성분 · 용량" maxlength="80">
+      <button type="submit" class="btn">추가</button>
+    </form>`;
+
+  // 모든 변경은 화면에 먼저 반영하고, 서버 저장이 실패하면 되돌림
+  const commit = async (optimistic, request, okMsg) => {
+    const before = state.meds;
+    setMeds(optimistic);
+    paintMeds(panel);
+    if (okMsg) toast(okMsg);
+    try {
+      setMeds(await request());
+      paintMeds(panel);
+    } catch (err) {
+      setMeds(before);
+      paintMeds(panel);
+      toast('저장 실패: ' + err.message);
+    }
+  };
+
+  $('#med-new', panel).addEventListener('submit', (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const med = { name: fd.get('name').trim(), timing: fd.get('timing').trim(), ingredient_dose: fd.get('ingredient_dose').trim() };
+    if (!med.name) return;
+    commit(state.meds.concat({ ...med, id: 'tmp_' + Date.now(), is_default: false, active: true }), () => api.addMed(med), `${med.name}을(를) 추가했어요`);
+  });
+
+  panel.onchange = (e) => {
+    if (e.target.dataset.act !== 'active') return;
+    const id = e.target.closest('.med-edit').dataset.id;
+    const active = e.target.checked;
+    commit(state.meds.map((m) => (m.id === id ? { ...m, active } : m)), () => api.updateMed({ id, active }), active ? '기록 화면에 표시할게요' : '기록 화면에서 숨겼어요');
+  };
+
+  panel.onclick = (e) => {
     const btn = e.target.closest('button[data-act]');
     if (!btn) return;
     const box = btn.closest('.med-edit');
     const id = box.dataset.id;
     const med = state.meds.find((m) => m.id === id);
-    btn.disabled = true;
-    try {
-      if (btn.dataset.act === 'save') {
-        const vals = Object.fromEntries($$('[data-f]', box).map((i) => [i.dataset.f, i.value.trim()]));
-        if (!vals.name) throw new Error('약 이름을 입력해주세요');
-        state.meds = await api.updateMed({ id, ...vals });
-        toast('저장했어요');
-      } else if (btn.dataset.act === 'delete') {
-        if (!confirm(med.is_default ? `${med.name}을(를) 오늘의 복용약 목록에서 숨길까요?` : `${med.name}을(를) 삭제할까요?`)) return;
-        state.meds = await api.deleteMed(id);
-        toast(med.is_default ? '목록에서 숨겼어요' : '삭제했어요');
-      } else if (btn.dataset.act === 'restore') {
-        state.meds = await api.updateMed({ id, active: true });
-        toast('다시 목록에 표시할게요');
-      }
-      paintMeds(panel);
-    } catch (err) {
-      toast(err.message);
-    } finally {
-      btn.disabled = false;
+    if (!med) return;
+    if (id.startsWith('tmp_')) return toast('저장 중이에요. 잠시 후 다시 눌러주세요');
+    if (btn.dataset.act === 'save') {
+      const vals = Object.fromEntries($$('[data-f]', box).map((i) => [i.dataset.f, i.value.trim()]));
+      if (!vals.name) return toast('약 이름을 입력해주세요');
+      commit(state.meds.map((m) => (m.id === id ? { ...m, ...vals } : m)), () => api.updateMed({ id, ...vals }), '저장했어요');
+    } else if (btn.dataset.act === 'delete') {
+      if (!confirm(`${med.name}을(를) 삭제할까요?`)) return;
+      commit(state.meds.filter((m) => m.id !== id), () => api.deleteMed(id), '삭제했어요');
     }
   };
 }

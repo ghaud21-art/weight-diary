@@ -117,8 +117,9 @@ export async function mockCall(action, p) {
       return { records: sorted().filter((r) => r.date >= p.from && r.date <= p.to), periods: sortedPeriods(d) };
     case 'saveRecord': {
       const old = d.records.find((r) => r.date === p.date) || {};
+      const { skipFeedback, ...fields } = p;
       const rec = {
-        ...p, cycle_day: cycleDay(d.settings, p.date), coach_feedback: sampleFeedback(p.mood, p.mood_note, p.date),
+        ...fields, cycle_day: cycleDay(d.settings, p.date), coach_feedback: skipFeedback ? null : sampleFeedback(p.mood, p.mood_note, p.date),
         intake_kcal: old.intake_kcal ?? null, exercise_kcal: old.exercise_kcal ?? null, kcal_goal: old.kcal_goal ?? null,
       };
       d.records = d.records.filter((r) => r.date !== p.date).concat(rec);
@@ -179,9 +180,7 @@ export async function mockCall(action, p) {
       return d.meds;
     }
     case 'deleteMed': {
-      const m = d.meds.find((x) => x.id === p.id);
-      if (m.is_default) m.active = false;
-      else d.meds = d.meds.filter((x) => x.id !== p.id);
+      d.meds = d.meds.filter((x) => x.id !== p.id);
       save(d);
       return d.meds;
     }
