@@ -6,6 +6,7 @@ import { resetPreview } from '../mock.js';
 import { state, applyTheme, saveSettings, cycleStats } from '../store.js';
 import { $, $$, esc, toast, fmtLong } from '../utils.js';
 import { backbar } from './common.js';
+import { isInstalled, canPrompt, isIOS, promptInstall, onInstallChange } from '../pwa.js';
 
 export function render(view) {
   const s = state.settings;
@@ -69,6 +70,8 @@ export function render(view) {
         </div>
       </section>
 
+      <section class="card r18 flat" aria-label="앱 설치" id="install-card"></section>
+
       <button type="button" class="btn ghost lg" id="logout" style="box-shadow:none">${PREVIEW_MODE ? '미리보기 데이터 초기화' : '로그아웃'}</button>
     </div>`;
 
@@ -106,6 +109,27 @@ export function render(view) {
     if (open) paintMeds(panel);
   });
 
+  // 앱 설치
+  const card = $('#install-card', view);
+  const paintInstall = () => {
+    let sub, btn = '';
+    if (isInstalled()) sub = '홈 화면에 설치된 앱으로 열려 있어요.';
+    else if (canPrompt()) { sub = '홈 화면에 아이콘을 추가하고 앱처럼 열 수 있어요.'; btn = '<button type="button" class="btn" id="install-btn">설치</button>'; }
+    else if (isIOS()) sub = 'Safari 아래 공유 버튼을 누르고 "홈 화면에 추가"를 선택해주세요.';
+    else sub = '브라우저 메뉴(⋮)에서 "앱 설치" 또는 "홈 화면에 추가"를 선택해주세요.';
+    card.innerHTML = `
+      <div class="install-row">
+        <img src="icons/icon-192.png" alt="" width="48" height="48">
+        <div style="flex:1;min-width:0"><p class="t">건강일기 앱으로 설치</p><p class="s">${sub}</p></div>
+        ${btn}
+      </div>`;
+    $('#install-btn', card)?.addEventListener('click', async () => {
+      if (await promptInstall()) toast('홈 화면에 설치했어요');
+    });
+  };
+  paintInstall();
+  const off = onInstallChange(paintInstall);
+
   $('#logout', view).addEventListener('click', async () => {
     if (PREVIEW_MODE) {
       resetPreview();
@@ -117,6 +141,7 @@ export function render(view) {
     await signOut();
     location.reload();
   });
+  return off;
 }
 
 function cycleInfoHtml() {

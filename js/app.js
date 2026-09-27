@@ -4,6 +4,7 @@ import { getToken, signIn, signOut } from './auth.js';
 import { state, load, applyTheme } from './store.js';
 import { icon } from './icons.js';
 import { $, $$, esc } from './utils.js';
+import { initPwa } from './pwa.js';
 import * as record from './screens/record.js';
 import * as journey from './screens/journey.js';
 import * as calendar from './screens/calendar.js';
@@ -56,7 +57,7 @@ function showLogin({ overlay = false } = {}) {
   const box = document.createElement('div');
   box.className = 'center-screen';
   box.innerHTML = `
-    <div class="logo">${icon.heart(30)}</div>
+    <img class="app-logo" src="icons/icon-192.png" alt="" width="88" height="88">
     <h1>건강일기</h1>
     <p>${overlay ? '로그인이 만료됐어요. 다시 로그인하면 이어서 진행할게요.' : '대사 코치와 함께하는 나만의 기록장이에요.<br>본인 구글 계정으로 로그인해주세요.'}</p>
     <div class="gbtn"></div>`;
@@ -95,6 +96,7 @@ function showError(msg) {
 }
 
 async function boot() {
+  initPwa();
   renderTabbar();
   if (!PREVIEW_MODE) {
     if (!CONFIG.GOOGLE_CLIENT_ID) return showError('js/config.js에 GOOGLE_CLIENT_ID를 입력해주세요.');

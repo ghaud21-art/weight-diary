@@ -435,3 +435,11 @@ body.no-tabbar #view { padding-bottom: 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+.app-logo { width: 88px; height: 88px; border-radius: 24px; border: 1.4px solid var(--stroke); box-shadow: 0 2px 0 var(--stroke); }
+.install-row { display: flex; align-items: center; gap: 12px; }
+.install-row img { width: 48px; height: 48px; border-radius: 14px; flex-shrink: 0; }
+.install-row .t { font-size: 13.5px; }
+.install-row .s { font-size: 11.5px; color: var(--muted); margin-top: 2px; line-height: 1.45; }
+.install-row .btn { width: auto; padding: 9px 14px; flex-shrink: 0; }
+.inbody-save { margin-top: 14px; padding: 12px; font-size: 14px; }
+.save-note { margin-top: 6px; text-align: center; font-size: 11px; }

@@ -56,6 +56,8 @@ export function render(view) {
           ${numField('body_fat_pct', '체지방률 (%)', d.body_fat_pct, last?.body_fat_pct)}
         </div>
         <p class="hint" id="inbody-hint" hidden></p>
+        <button type="button" class="btn inbody-save" data-save>${saveLabel(saved)}</button>
+        <p class="hint save-note">마음·복용약까지 함께 저장돼요. 나중에 고쳐서 다시 저장해도 괜찮아요.</p>
       </section>
 
       <section class="card" aria-labelledby="h-mood">
@@ -88,7 +90,7 @@ export function render(view) {
         </form>
       </section>
 
-      <button type="button" class="btn lg" id="save">${saved ? '기록 수정하고 피드백 다시 받기' : '기록 저장하고 코치 피드백 받기'}</button>
+      <button type="button" class="btn lg" data-save>${saveLabel(saved)}</button>
 
       <div id="coach-preview">${previewHtml()}</div>
 
@@ -129,7 +131,7 @@ export function render(view) {
   bindKcal(view);
   bindPeriod(view);
   bindRetry(view);
-  $('#save', view).addEventListener('click', () => onSave(view));
+  $$('[data-save]', view).forEach((b) => b.addEventListener('click', () => onSave(view)));
 }
 
 function numField(key, label, val, placeholder) {
@@ -295,15 +297,19 @@ function bindMeds(view) {
 }
 
 /* ───────── 저장 ───────── */
+const saveLabel = (saved) => (saved ? '수정해서 다시 저장하기' : '저장하고 코치 피드백 받기');
+
 async function onSave(view) {
   const d = state.draft;
   if (d.weight == null && d.muscle_mass == null && d.body_fat_pct == null && !d.mood) {
     toast('인바디 수치나 오늘의 마음 중 하나는 입력해주세요');
     return;
   }
-  const btn = $('#save', view);
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> 코치가 피드백을 쓰고 있어요…';
+  const btns = $$('[data-save]', view);
+  btns.forEach((b) => {
+    b.disabled = true;
+    b.innerHTML = '<span class="spinner"></span> 코치가 피드백을 쓰고 있어요…';
+  });
   try {
     const res = await api.saveRecord({
       date: d.date,
@@ -316,16 +322,17 @@ async function onSave(view) {
     });
     upsertRecord(res.record);
     toast(res.feedbackError ? '기록은 저장했지만 피드백 생성에 실패했어요' : '저장했어요. 오늘의 피드백이 도착했어요');
-    btn.textContent = '기록 수정하고 피드백 다시 받기';
     $('#coach-preview', view).innerHTML = previewHtml();
     $('#goal-card', view).innerHTML = goalHtml();
     bindRetry(view);
     $('#coach-preview', view).scrollIntoView({ behavior: 'smooth', block: 'center' });
   } catch (err) {
     toast('저장 실패: ' + err.message);
-    btn.textContent = recordOn(state.today) ? '기록 수정하고 피드백 다시 받기' : '기록 저장하고 코치 피드백 받기';
   } finally {
-    btn.disabled = false;
+    btns.forEach((b) => {
+      b.disabled = false;
+      b.textContent = saveLabel(!!recordOn(state.today));
+    });
   }
 }
 
