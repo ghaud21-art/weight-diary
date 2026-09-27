@@ -123,7 +123,7 @@ export async function mockCall(action, p) {
       const old = d.records.find((r) => r.date === p.date) || {};
       const { skipFeedback, ...fields } = p;
       const rec = {
-        ...fields, cycle_day: cycleDay(d.settings, p.date), coach_feedback: skipFeedback ? null : sampleFeedback(p.mood, p.mood_note, p.date),
+        ...fields, cycle_day: cycleDay(d.settings, p.date), coach_feedback: skipFeedback ? (old.coach_feedback || null) : sampleFeedback(p.mood, p.mood_note, p.date),
         intake_kcal: old.intake_kcal ?? null, exercise_kcal: old.exercise_kcal ?? null, kcal_goal: old.kcal_goal ?? null,
       };
       d.records = d.records.filter((r) => r.date !== p.date).concat(rec);

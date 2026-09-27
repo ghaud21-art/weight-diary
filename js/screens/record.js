@@ -41,7 +41,6 @@ export function render(view) {
   const d = initDraft();
   const s = state.settings;
   const last = latestRecord();
-  const saved = recordOn(state.today);
 
   view.innerHTML = `
     ${topbar()}
@@ -65,7 +64,7 @@ export function render(view) {
           ${numField('body_fat_pct', '체지방률 (%)', d.body_fat_pct, last?.body_fat_pct)}
         </div>
         <p class="hint" id="inbody-hint" hidden></p>
-        <button type="button" class="btn inbody-save" data-save>${saveLabel(saved)}</button>
+        <button type="button" class="btn inbody-save" data-save data-label="인바디 저장">인바디 저장</button>
         <p class="hint save-note">마음·복용약까지 함께 저장돼요. 나중에 고쳐서 다시 저장해도 괜찮아요.</p>
       </section>
 
@@ -81,7 +80,7 @@ export function render(view) {
         </fieldset>
         <label class="label" for="mood-note" style="margin:14px 0 6px">오늘 있었던 일 (선택)</label>
         <input class="input" id="mood-note" type="text" maxlength="300" placeholder="한 줄로 편하게 적어보세요" value="${esc(d.mood_note)}">
-        <button type="button" class="btn mood-save" data-save>${saveLabel(saved)}</button>
+        <button type="button" class="btn mood-save" data-save data-label="마음 저장">마음 저장</button>
       </section>
 
       <section class="card" aria-labelledby="h-med">
@@ -94,11 +93,10 @@ export function render(view) {
             <input class="input timing" name="timing" type="text" placeholder="복용 타이밍" maxlength="40" aria-label="복용 타이밍">
           </div>
           <input class="input" name="ingredient_dose" type="text" placeholder="성분 · 용량 (예: 메트포르민 500mg)" maxlength="80" aria-label="성분 · 용량">
-          <button type="submit" class="btn">${icon.plus()} 목록에 추가</button>
+          <button type="submit" class="btn outline">${icon.plus()} 목록에 추가</button>
         </form>
+        <button type="button" class="btn med-save" data-save data-label="복용약 저장">복용약 저장</button>
       </section>
-
-      <button type="button" class="btn lg" data-save>${saveLabel(saved)}</button>
 
       <div id="coach-preview">${previewHtml()}</div>
 
@@ -133,10 +131,15 @@ export function render(view) {
         </div>
         <div class="kcal-result" id="kcal-result"></div>
       </section>
+
+      <div class="send-box">
+        <button type="button" class="btn lg" id="send-coach">${icon.chat(16)} ${sendLabel()}</button>
+        <p class="hint">오늘 기록을 다 마쳤으면 눌러주세요. 저장 안 된 내용은 함께 저장하고, 코치 피드백은 이 버튼으로만 받아요.</p>
+      </div>
     </div>
     <div class="dirty-bar" id="dirty-bar" role="status" hidden>
       <span>저장하지 않은 기록이 있어요</span>
-      <button type="button" class="btn bar-save" data-save>저장</button>
+      <button type="button" class="btn bar-save" data-save data-label="저장">저장</button>
     </div>`;
 
   bindInbody(view);
@@ -144,8 +147,8 @@ export function render(view) {
   bindMeds(view);
   bindKcal(view);
   bindFood(view);
-  bindRetry(view);
   $$('[data-save]', view).forEach((b) => b.addEventListener('click', () => onSave(view)));
+  $('#send-coach', view).addEventListener('click', () => sendToCoach(view));
   markDirty(view);
 }
 
@@ -174,15 +177,14 @@ function previewHtml() {
   const fb = rec?.coach_feedback;
   let body, links;
   if (!rec) {
-    body = '아침 기록을 저장하면 코치가 오늘의 몸 상태를 풀어서 설명해드려요.';
+    body = '오늘 기록을 마치고 맨 아래 "코치에게 보내기"를 누르면 코치가 오늘의 몸 상태를 풀어서 설명해드려요.';
     links = `<a class="link-btn" href="#/chat">${icon.chat()} AI 코치와 대화하기</a>`;
   } else if (!fb && feedbackPending) {
     body = '코치가 오늘의 피드백을 쓰고 있어요. 잠시만 기다려주세요.';
     links = `<span class="link-btn muted"><span class="spinner dark"></span> 작성 중…</span>`;
   } else if (!fb) {
-    body = '피드백을 아직 만들지 못했어요. 다시 시도해볼까요?';
-    links = `<button type="button" class="link-btn peach" id="retry-fb">${icon.refresh()} 피드백 다시 받기</button>
-             <a class="link-btn" href="#/chat">${icon.chat()} AI 코치와 대화하기</a>`;
+    body = '기록은 저장됐어요. 다 적었으면 맨 아래 "코치에게 보내기"를 눌러주세요.';
+    links = `<a class="link-btn" href="#/chat">${icon.chat()} AI 코치와 대화하기</a>`;
   } else {
     const text = fb.legacy || fb.briefing?.emotional || fb.briefing?.body || '';
     body = text.length > 90 ? text.slice(0, 90) + '…' : text;
@@ -318,27 +320,18 @@ function bindMeds(view) {
   });
 }
 
-/* ───────── 저장 ───────── */
-const saveLabel = (saved) => (saved ? '수정해서 다시 저장하기' : '저장하고 코치 피드백 받기');
+/* ───────── 저장 · 코치에게 보내기 ───────── */
+const sendLabel = () => (recordOn(state.today)?.coach_feedback ? '코치에게 다시 보내기' : '코치에게 보내기');
 
-async function onSave(view) {
+/** 오늘 기록 저장 (코치 피드백은 만들지 않음). 성공하면 true */
+async function saveDraft(view) {
   const d = state.draft;
-  if (d.weight == null && d.muscle_mass == null && d.body_fat_pct == null && !d.mood) {
-    toast('인바디 수치나 오늘의 마음 중 하나는 입력해주세요');
-    return;
+  if (d.weight == null && d.muscle_mass == null && d.body_fat_pct == null && !d.mood && !d.taken.length) {
+    toast('인바디 수치, 오늘의 마음, 복용약 중 하나는 입력해주세요');
+    return false;
   }
   const btns = $$('[data-save]', view);
-  const setBtns = (busy) => btns.forEach((b) => {
-    b.disabled = busy;
-    b.innerHTML = busy ? '<span class="spinner"></span> 저장하는 중…' : b.classList.contains('bar-save') ? '저장' : saveLabel(!!recordOn(state.today));
-  });
-  setBtns(true);
-  const refreshPreview = () => {
-    const box = $('#coach-preview', view);
-    if (!box) return;
-    box.innerHTML = previewHtml();
-    bindRetry(view);
-  };
+  btns.forEach((b) => { b.disabled = true; b.innerHTML = '<span class="spinner"></span> 저장하는 중…'; });
   try {
     const res = await api.saveRecord({
       date: d.date,
@@ -350,46 +343,52 @@ async function onSave(view) {
       medications_taken: d.taken,
       skipFeedback: true,
     });
-    upsertRecord(res.record);
+    // 기존 피드백은 유지 (다시 보내기 전까지)
+    const prev = recordOn(state.today)?.coach_feedback || null;
+    upsertRecord({ ...res.record, coach_feedback: res.record.coach_feedback || prev });
     markDirty(view);
-    feedbackPending = true;
-    toast('저장했어요. 코치가 피드백을 쓰고 있어요');
-    setBtns(false);
-    refreshPreview();
     $('#goal-card', view).innerHTML = goalHtml();
-    $('#coach-preview', view).scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return true;
   } catch (err) {
     toast('저장 실패: ' + err.message);
-    setBtns(false);
-    return;
+    return false;
+  } finally {
+    btns.forEach((b) => { b.disabled = false; b.textContent = b.dataset.label; });
   }
+}
+
+async function onSave(view) {
+  if (await saveDraft(view)) toast('저장했어요');
+}
+
+/** 맨 아래 버튼: 저장 안 된 기록이 있으면 먼저 저장하고, 코치 피드백을 한 번 받음 */
+async function sendToCoach(view) {
+  const btn = $('#send-coach', view);
+  const refreshPreview = () => {
+    const box = $('#coach-preview', view);
+    if (box) box.innerHTML = previewHtml();
+  };
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> 코치에게 보내는 중…';
   try {
-    upsertRecord(await api.regenerateFeedback(d.date));
+    if (isDirty() || !recordOn(state.today)) {
+      if (!(await saveDraft(view))) return;
+    }
+    feedbackPending = true;
+    refreshPreview();
+    $('#coach-preview', view).scrollIntoView({ behavior: 'smooth', block: 'center' });
+    upsertRecord(await api.regenerateFeedback(state.today));
     toast('오늘의 코치 피드백이 도착했어요');
   } catch (err) {
     toast('피드백을 만들지 못했어요: ' + err.message);
   } finally {
     feedbackPending = false;
     refreshPreview();
-  }
-}
-
-function bindRetry(view) {
-  const retry = $('#retry-fb', view);
-  if (!retry) return;
-  retry.addEventListener('click', async () => {
-    retry.disabled = true;
-    retry.innerHTML = '<span class="spinner dark"></span> 만드는 중…';
-    try {
-      upsertRecord(await api.regenerateFeedback(state.today));
-      $('#coach-preview', view).innerHTML = previewHtml();
-    } catch (err) {
-      toast('실패: ' + err.message);
-      retry.disabled = false;
-      retry.textContent = '피드백 다시 받기';
+    if (btn.isConnected) {
+      btn.disabled = false;
+      btn.innerHTML = `${icon.chat(16)} ${sendLabel()}`;
     }
-    bindRetry(view);
-  });
+  }
 }
 
 /* ───────── 칼로리 플랜 ───────── */
@@ -606,7 +605,7 @@ function foodHtml() {
   return `
     <div class="card-head">
       <h2 id="h-food">오늘 먹은 것 · 운동</h2>
-      <span class="meta">메모하면 AI가 칼로리를 계산해요</span>
+      <span class="meta">AI 칼로리 계산</span>
     </div>
     <label class="label" for="food-note">먹은 것</label>
     <textarea class="input note" id="food-note" rows="3" maxlength="1000"
