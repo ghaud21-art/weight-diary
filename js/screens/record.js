@@ -463,30 +463,34 @@ function kcalHtml(p, input) {
   const losing = p.status === 'ok' || p.status === 'too_fast';
   let notice = '';
   let compare = '';
-  if (p.status === 'too_fast') {
+  if (losing) {
     const g = p.goalPlan;
+    const fast = p.status === 'too_fast';
     const kcal = (v) => (v > 0 ? `${comma(v)}<small>kcal</small>` : '0<small>kcal 이하</small>');
+    const goalDay = fmtLong(input.goalDate).replace(/ \S+요일$/, '');
     compare = `
       <div class="rx-compare">
-        <div class="rx-col goal">
-          <p class="k">목표 날짜대로라면</p>
+        <div class="rx-col goal ${fast ? '' : 'safe'}">
+          <p class="k">목표 날짜(${esc(goalDay)})대로라면</p>
           <strong>${kcal(g.target)}</strong>
           <p class="s">운동 ${comma(g.exercise)}kcal · 주당 −${g.weeklyLoss.toFixed(2)}kg</p>
-          <span class="chip clay">안전 하한선 아래</span>
+          <span class="chip ${fast ? 'clay' : 'neutral'}">${fast ? '안전 하한선 아래' : '안전 범위'}</span>
         </div>
         <div class="rx-col rec">
           <p class="k">추천 칼로리</p>
           <strong>${kcal(p.target)}</strong>
           <p class="s">운동 ${comma(p.exercise)}kcal · 주당 −${p.weeklyLoss.toFixed(2)}kg</p>
-          <span class="chip">${esc(safeDateLabel(p).replace(/ \S+요일$/, ''))}쯤 도달</span>
+          <span class="chip">${fast ? esc(safeDateLabel(p).replace(/ \S+요일$/, '')) + '쯤 도달' : '목표 날짜에 도달'}</span>
         </div>
       </div>`;
-    notice = `
+    notice = fast
+      ? `
       <div class="notice">
         목표 날짜를 지키려면 하루 ${comma(p.needDeficit)}kcal를 줄여야 해요. 이건 안전 하한선(기초대사량 ${comma(p.bmr)}kcal·최소 1,200kcal 이상 섭취, 주당 체중의 1% 이내)보다 빠른 속도라,
         아래 처방은 <strong>추천 칼로리</strong> 기준이에요.
         <br><button type="button" class="link-btn" id="k-fix-date">목표 날짜를 ${esc(safeDateLabel(p))}로 바꾸기</button>
-      </div>`;
+      </div>`
+      : '<p class="hint">목표 날짜대로 가도 안전한 속도라서 추천 칼로리와 같아요.</p>';
   } else if (p.status === 'reached') {
     notice = '<div class="notice">현재 체중이 목표 체중 이하예요. 유지 칼로리로 안내할게요.</div>';
   } else if (p.status === 'date_passed') {
@@ -494,14 +498,14 @@ function kcalHtml(p, input) {
   } else if (p.status === 'no_room') {
     notice = '<div class="notice">지금 활동량에서는 더 줄일 여유가 없어요. 활동량을 늘리는 쪽으로 코치와 이야기해봐요.</div>';
   } else if (p.status === 'maintain') {
-    notice = '<p class="hint">목표 체중과 날짜를 정하면 감량 처방으로 바꿔드려요.</p>';
+    notice = '<div class="notice">위에서 <strong>목표 체중</strong>과 <strong>목표 날짜</strong>를 정하면, 목표 날짜대로 갈 때의 칼로리와 추천 칼로리를 나란히 보여드려요. 지금은 유지 칼로리예요.</div>';
   }
 
   const pct = (v) => ((v / p.tdee) * 100).toFixed(1);
   const row = (k, v, cls = '') => `<tr class="${cls}"><th scope="row">${k}</th><td>${v}</td></tr>`;
   return `
     ${compare}
-    ${compare ? notice : ''}
+    ${notice}
     <div class="rx-grid">
       <div class="rx">
         <span class="badge-ico accent">${icon.fork()}</span>
@@ -546,7 +550,6 @@ function kcalHtml(p, input) {
         ${p.bmi ? row('BMI', `${p.bmi.bmi.toFixed(1)} · ${p.bmi.label}`) : ''}
       </tbody>
     </table>
-    ${compare ? '' : notice}
     <p class="footnote">${esc(p.method)}${input.fatPct ? ` · 체지방률 ${fix1(input.fatPct)}%` : ''} 기준 추정치예요.
       달력에서는 순 섭취가 ${comma(p.netGoal)}kcal 이하면 목표 달성으로 표시돼요. 혈당 강하제를 복용 중이라면 섭취량을 크게 줄이기 전에 주치의와 상의해주세요.</p>`;
 }

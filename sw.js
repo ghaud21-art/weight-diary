@@ -1,5 +1,5 @@
 // 건강일기 서비스 워커 — 앱 화면 파일만 캐시 (기록 데이터·GAS 요청은 캐시하지 않음)
-const CACHE = 'health-diary-v2';
+const CACHE = 'health-diary-v3';
 const SHELL = [
   './',
   './index.html',
@@ -13,7 +13,7 @@ const SHELL = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -29,7 +29,8 @@ self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
   e.respondWith(
-    fetch(req)
+    // 브라우저 HTTP 캐시(깃허브 페이지는 10분)를 건너뛰고 항상 서버에 최신 여부를 확인
+    fetch(req, { cache: 'no-cache' })
       .then((res) => {
         if (res.ok) {
           const copy = res.clone();

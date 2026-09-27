@@ -461,3 +461,7 @@ body.no-tabbar #view { padding-bottom: 0; }
 .rx-col strong small { font-family: inherit; font-size: 12px; color: var(--muted); margin-left: 2px; }
 .rx-col .s { font-size: 11px; color: var(--muted); }
 .rx-compare + .notice { margin-top: 10px; }
+.rx-col.goal.safe { background: var(--neutral-soft); }
+.rx-col.goal.safe strong { color: var(--ink); }
+.rx-compare ~ .hint { margin-top: 8px; }
+.kcal-result > .notice:first-child { margin-top: 0; }
