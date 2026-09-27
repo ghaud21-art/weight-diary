@@ -1,0 +1,6 @@
+.claude/
+.DS_Store
+Thumbs.db
+
+# Apps Script 코드(프롬프트·개인 설정 포함)는 공개 저장소에 올리지 않음 — clasp로 Apps Script에서 관리
+gas/
