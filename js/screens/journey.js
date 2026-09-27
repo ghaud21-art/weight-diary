@@ -1,15 +1,15 @@
 import { icon } from '../icons.js';
-import { state, latestRecord } from '../store.js';
-import { $, $$, esc, addDays, daysBetween, fmtShort, fmtMD, weekday, fix1, cycleDay, cyclePhase, judge } from '../utils.js';
+import { state, latestRecord, bodyRecords, cycleStats } from '../store.js';
+import { $, $$, esc, addDays, daysBetween, fmtShort, fmtMD, weekday, fix1, judge } from '../utils.js';
+import { cycleLabel } from '../cycle.js';
 import { topbar } from './common.js';
 
 const W = 326, H = 130, PAD = 12;
 
 export function render(view) {
-  const cd = cycleDay(state.settings, state.today);
   const last = latestRecord();
-  const lastJudge = last ? judge(last, state.records.filter((r) => r.date < last.date).pop()) : null;
-  const sub = [cd ? `생리주기 ${cd}일차` : '', (cd && cyclePhase(cd, state.settings)) || lastJudge?.label].filter(Boolean).join(' · ') || '기록이 쌓일수록 흐름이 보여요';
+  const lastJudge = last ? judge(last, bodyRecords().filter((r) => r.date < last.date).pop(), state.settings) : null;
+  const sub = [cycleLabel(cycleStats()), lastJudge?.label].filter(Boolean).join(' · ') || '기록이 쌓일수록 흐름이 보여요';
 
   view.innerHTML = `
     ${topbar()}
@@ -35,9 +35,9 @@ function paint(view) {
   const n = state.journeyRange;
   $$('.seg button', view).forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.range) === n)));
   const start = addDays(state.today, -(n - 1));
-  const inRange = state.records.filter((r) => r.date >= start && r.date <= state.today);
+  const inRange = bodyRecords().filter((r) => r.date >= start && r.date <= state.today);
   const prevStart = addDays(start, -n);
-  const prevRange = state.records.filter((r) => r.date >= prevStart && r.date < start);
+  const prevRange = bodyRecords().filter((r) => r.date >= prevStart && r.date < start);
 
   $('#journey-body', view).innerHTML = `
     <div style="display:flex;flex-direction:column;gap:14px">
@@ -132,8 +132,8 @@ function statHtml(label, cur, prev, key, unit) {
 function listHtml(recs) {
   if (!recs.length) return '<p class="empty">아직 기록이 없어요.</p>';
   return recs.slice().reverse().map((r) => {
-    const prev = state.records.filter((x) => x.date < r.date).pop();
-    const j = judge(r, prev);
+    const prev = bodyRecords().filter((x) => x.date < r.date).pop();
+    const j = judge(r, prev, state.settings);
     const parts = [r.weight != null ? `${fix1(r.weight)}kg` : null, r.body_fat_pct != null ? `체지방 ${fix1(r.body_fat_pct)}%` : null, r.muscle_mass != null ? `근육 ${fix1(r.muscle_mass)}kg` : null].filter(Boolean);
     const inner = `
       <div class="main">

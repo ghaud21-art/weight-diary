@@ -18,6 +18,9 @@
   --neutral-soft: #F3EDE7;
   --grid: rgba(227, 152, 152, 0.05);
   --title-font: "Gowun Dodum", sans-serif;
+  --period: #E0708A;
+  --over-soft: #ECEAF6;
+  --over: #8C86B8;
 }
 
 [data-theme="A"] {
@@ -38,6 +41,9 @@
   --neutral-soft: #EFECE3;
   --grid: transparent;
   --title-font: "Gowun Batang", serif;
+  --period: #D9788C;
+  --over-soft: #EDE8F5;
+  --over: #8E7FB0;
 }
 
 /* ───────── 기본 ───────── */
@@ -189,17 +195,103 @@ body.no-tabbar #view { padding-bottom: 0; }
 .kcal-inputs { display: grid; grid-template-columns: 1fr 1fr 1.25fr; gap: 8px; }
 .kcal-inputs .input { text-align: center; padding: 9px 4px; }
 .kcal-result { margin-top: 14px; padding-top: 14px; border-top: 1.2px dashed var(--stroke); }
-.kcal-main { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.kcal-main .lbl { font-size: 12px; color: var(--muted); }
-.kcal-main .val { font-family: var(--title-font); font-size: 30px; line-height: 1.1; color: var(--ink); }
-.kcal-main .val small { font-family: inherit; font-size: 14px; color: var(--muted); margin-left: 3px; }
-.kcal-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
-.kcal-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .notice { margin-top: 12px; padding: 11px 12px; border-radius: 14px; background: var(--clay-soft); color: var(--ink); font-size: 12px; line-height: 1.55; }
 .notice .link-btn { margin-top: 6px; color: var(--clay); }
 .footnote { font-size: 11px; color: var(--muted); margin-top: 10px; line-height: 1.5; }
 .activity-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .activity-row .label { margin: 0; white-space: nowrap; }
+
+/* 칼로리 처방 표 */
+.rx-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+.rx { background: var(--bg); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.rx p { font-size: 12px; color: var(--muted); line-height: 1.4; }
+.rx strong { font-family: var(--title-font); font-weight: 400; font-size: 26px; line-height: 1; }
+.rx strong small { font-family: inherit; font-size: 13px; color: var(--muted); margin-left: 2px; }
+.rx-title { font-size: 14px; margin: 18px 0 8px; }
+.rx-bar { display: flex; height: 26px; border-radius: 8px; overflow: hidden; }
+.rx-bar div { display: flex; align-items: center; justify-content: center; color: #FFFFFF; font-size: 11px; font-weight: 600; min-width: 0; overflow: hidden; white-space: nowrap; }
+.rx-legend { margin-top: 8px; flex-wrap: wrap; }
+.rx-table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 13px; }
+.rx-table th, .rx-table td { padding: 9px 4px; border-bottom: 1px solid var(--stroke); }
+.rx-table th { text-align: left; font-weight: 400; color: var(--muted); }
+.rx-table td { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rx-table tr.sum th, .rx-table tr.sum td { color: var(--ink); font-weight: 700; }
+.rx-table tr.sub th { padding-left: 18px; font-size: 12px; }
+.rx-table tr.sub td { font-size: 12px; color: var(--muted); }
+.rx-table tr:last-child th, .rx-table tr:last-child td { border-bottom: none; }
+
+/* 생리 기록 */
+.period-btns { display: flex; gap: 8px; }
+.period-btns .btn { font-size: 13px; }
+.period-btns .btn[aria-pressed="true"] { background: var(--period); border-color: var(--period); color: #FFFFFF; }
+.btn.outline { border: 1.4px solid var(--accent); }
+.info-list { margin: 0 0 12px; display: flex; flex-direction: column; gap: 6px; }
+.info-list div { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
+.info-list dt { color: var(--muted); }
+.info-list dd { margin: 0; text-align: right; }
+
+/* ───────── 달력 ───────── */
+.cal-card { padding: 14px 10px 12px; }
+.cal-nav { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 10px; }
+.cal-nav h2 { font-size: 18px; }
+.cal-week { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; font-size: 11.5px; color: var(--muted); padding-bottom: 6px; }
+.cal-week .sun { color: var(--period); }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); border-top: 1px solid var(--stroke); }
+.cal-cell {
+  position: relative; min-height: 76px; padding: 4px 3px 5px; border: none; border-bottom: 1px solid var(--stroke);
+  background: transparent; text-align: left; display: flex; flex-direction: column; gap: 2px; overflow: hidden; min-width: 0;
+}
+.cal-cell:disabled { cursor: default; }
+.cal-cell .d { font-size: 12px; line-height: 16px; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; }
+.cal-cell:nth-child(7n + 1) .d { color: var(--period); }
+.cal-cell.out { opacity: 0.35; }
+.cal-cell.future .lines { display: none; }
+.cal-cell.today .d { background: var(--ink); color: var(--bg) !important; font-weight: 700; }
+.cal-cell .lines { display: flex; flex-direction: column; gap: 1px; font-size: 10px; line-height: 13px; font-variant-numeric: tabular-nums; position: relative; z-index: 1; }
+.cal-cell .lines span { display: flex; align-items: center; gap: 2px; white-space: nowrap; }
+.cal-cell .lines svg { color: var(--muted); }
+.cal-cell.st-success { background: var(--accent2-soft); }
+.cal-cell.st-over { background: var(--over-soft); }
+.cal-cell[data-stamp]::after {
+  content: attr(data-stamp); position: absolute; right: 2px; top: 3px; font-size: 9px; font-weight: 700; padding: 0 3px;
+  border: 1.2px solid currentColor; border-radius: 6px; transform: rotate(-14deg); opacity: 0.6;
+}
+.cal-cell.st-success[data-stamp]::after { color: var(--accent2); }
+.cal-cell.st-over[data-stamp]::after { color: var(--over); }
+.cal-cell.mk-period::before, .cal-cell.mk-predicted::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 4px; }
+.cal-cell.mk-period::before { background: var(--period); }
+.cal-cell.mk-predicted::before { background: repeating-linear-gradient(90deg, var(--period) 0 4px, transparent 4px 7px); opacity: 0.6; }
+.cal-cell[data-date]:hover { outline: 1.4px solid var(--stroke); outline-offset: -1.4px; }
+.cal-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 11px; color: var(--muted); padding: 10px 4px 0; }
+.cal-legend span { display: flex; align-items: center; gap: 5px; }
+.cal-legend i { width: 12px; height: 10px; border-radius: 3px; display: inline-block; }
+.lg-success { background: var(--accent2-soft); border: 1px solid var(--accent2); }
+.lg-over { background: var(--over-soft); border: 1px solid var(--over); }
+.lg-period { background: var(--period); height: 4px !important; }
+.lg-predicted { background: repeating-linear-gradient(90deg, var(--period) 0 3px, transparent 3px 5px); height: 4px !important; opacity: 0.6; }
+.cal-keys { display: flex; gap: 12px; font-size: 11px; color: var(--muted); padding: 6px 4px 0; }
+.cal-keys span { display: flex; align-items: center; gap: 3px; }
+.sum-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.sum-grid > div { background: var(--bg); border-radius: 14px; padding: 12px; }
+.sum-grid .k { font-size: 11.5px; color: var(--muted); margin-bottom: 4px; }
+.sum-grid .v { font-size: 16px; font-weight: 700; }
+
+/* 날짜 상세 시트 */
+.sheet {
+  border: none; padding: 0; margin: auto auto 0; width: 100%; max-width: 480px; max-height: 88vh;
+  border-radius: 22px 22px 0 0; background: var(--card); color: var(--ink);
+}
+.sheet::backdrop { background: rgba(40, 30, 25, 0.35); }
+.sheet-body { padding: 18px 22px calc(22px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 16px; }
+.sheet-head { display: flex; align-items: center; justify-content: space-between; }
+.sheet-head h2 { font-size: 18px; }
+.sheet-body-row { display: flex; flex-direction: column; gap: 6px; }
+.sheet-line { font-size: 13px; }
+.sheet-line.muted { color: var(--muted); }
+.sheet-group { border: 1.2px solid var(--stroke); border-radius: 16px; padding: 12px 14px 14px; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.sheet-group legend { font-size: 12px; color: var(--muted); padding: 0 6px; }
+.sheet-group .hint { margin: 0; }
+.check-row { display: flex; align-items: center; justify-content: space-between; font-size: 13.5px; cursor: pointer; }
 
 /* ───────── 여정 ───────── */
 .seg { display: flex; gap: 8px; }

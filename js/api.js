@@ -54,6 +54,9 @@ export const api = {
   addMed: (m) => call('addMed', m),
   updateMed: (m) => call('updateMed', m),
   deleteMed: (id) => call('deleteMed', { id }),
+  getRange: (from, to) => call('getRange', { from, to }),
+  saveDay: (day) => call('saveDay', day),
+  setPeriod: (date, type, on) => call('setPeriod', { date, type, on }),
   getChat: () => call('getChat'),
   sendChat: (message) => call('sendChat', { message }),
 };

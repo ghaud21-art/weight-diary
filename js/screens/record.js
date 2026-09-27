@@ -1,7 +1,8 @@
 import { api } from '../api.js';
 import { icon } from '../icons.js';
-import { state, activeMeds, recordOn, latestRecord, upsertRecord, saveSettings } from '../store.js';
-import { $, $$, esc, num, fix1, comma, fmtLong, greeting, cycleDay, cyclePhase, movingAvg, debounce, toast, resizeImage } from '../utils.js';
+import { state, activeMeds, morningOn as recordOn, latestRecord, upsertRecord, saveSettings, cycleStats } from '../store.js';
+import { cycleLabel, nextLabel } from '../cycle.js';
+import { $, $$, esc, num, fix1, comma, fmtLong, greeting, movingAvg, debounce, toast, resizeImage } from '../utils.js';
 import { calcPlan, planSummary, safeDateLabel, ACTIVITY } from '../calorie.js';
 import { topbar, previewBanner, timingTone } from './common.js';
 
@@ -30,7 +31,6 @@ function initDraft() {
 export function render(view) {
   const d = initDraft();
   const s = state.settings;
-  const cd = cycleDay(s, state.today);
   const last = latestRecord();
   const saved = recordOn(state.today);
 
@@ -38,7 +38,7 @@ export function render(view) {
     ${topbar()}
     <div class="page-title">
       <h1>${esc(greeting(s.nickname || '회원님'))}</h1>
-      <p>${fmtLong(state.today)} · ${cd ? [`생리주기 ${cd}일차`, cyclePhase(cd, s)].filter(Boolean).join(' · ') : '<a class="link-btn" href="#/settings">생리주기 설정하기</a>'}</p>
+      <p>${subtitleHtml()}</p>
     </div>
     ${previewBanner()}
     <div class="stack">
@@ -72,6 +72,8 @@ export function render(view) {
         <input class="input" id="mood-note" type="text" maxlength="300" placeholder="한 줄로 편하게 적어보세요" value="${esc(d.mood_note)}">
       </section>
 
+      <section class="card" aria-labelledby="h-period" id="period-card">${periodHtml()}</section>
+
       <section class="card" aria-labelledby="h-med">
         <h2 id="h-med">오늘의 복용약</h2>
         <div class="med-list" id="med-list">${medListHtml(d)}</div>
@@ -94,7 +96,7 @@ export function render(view) {
 
       <section class="card" aria-labelledby="h-kcal">
         <div class="card-head">
-          <h2 id="h-kcal">칼로리 플랜</h2>
+          <h2 id="h-kcal">칼로리 처방</h2>
           <span class="meta">목표 체중 · 날짜로 계산해요</span>
         </div>
         <div class="kcal-inputs">
@@ -125,6 +127,7 @@ export function render(view) {
   bindMood(view);
   bindMeds(view);
   bindKcal(view);
+  bindPeriod(view);
   bindRetry(view);
   $('#save', view).addEventListener('click', () => onSave(view));
 }
@@ -383,6 +386,7 @@ function updateKcal(view) {
   return plan;
 }
 
+
 function onGoalChange(view) {
   const plan = updateKcal(view);
   const gw = $('#k-goal', view).value;
@@ -391,8 +395,19 @@ function onGoalChange(view) {
     goal_weight: gw,
     goal_date: gd,
     activity_level: $('#k-act', view).value,
-    calorie_plan: planSummary(plan, gw, gd),
+    ...planSettings(plan, gw, gd),
   });
+}
+
+/** 코치와 달력이 참고하는 칼로리 처방 값 */
+function planSettings(plan, gw, gd) {
+  if (!plan.target) return {};
+  return {
+    calorie_plan: planSummary(plan, gw, gd),
+    calorie_target: String(plan.target),
+    calorie_exercise: String(plan.exercise),
+    calorie_net_goal: String(plan.netGoal),
+  };
 }
 
 function bindKcal(view) {
@@ -404,35 +419,26 @@ function bindKcal(view) {
   });
   ['#k-goal', '#k-date', '#k-act'].forEach((sel) => $(sel, view).addEventListener('input', () => onGoalChange(view)));
   const plan = updateKcal(view);
-  // 코치가 참고할 칼로리 요약이 최신 기록 기준과 다르면 조용히 갱신
-  const summary = planSummary(plan, state.settings.goal_weight, state.settings.goal_date);
-  if (summary && summary !== state.settings.calorie_plan) persistGoal({ calorie_plan: summary });
+  // 최신 기록 기준 처방이 저장된 값과 다르면 조용히 갱신
+  const next = planSettings(plan, state.settings.goal_weight, state.settings.goal_date);
+  if (Object.keys(next).some((k) => next[k] !== state.settings[k])) persistGoal(next);
 }
 
 function kcalHtml(p, input) {
   if (p.status === 'need_weight') {
-    return '<p class="hint" style="margin:0">현재 체중을 입력하면 하루 권장 칼로리를 계산해드려요.</p>';
+    return '<p class="hint" style="margin:0">현재 체중을 입력하면 칼로리 처방을 계산해드려요.</p>';
   }
   if (p.status === 'need_profile') {
     return '<p class="hint" style="margin:0">체지방률을 입력하거나, <a class="link-btn" href="#/settings">설정</a>에서 키와 출생연도를 알려주시면 계산할 수 있어요.</p>';
   }
 
-  const chips = [];
-  let sub = `유지 칼로리 ${comma(p.tdee)}kcal · 기초대사량 ${comma(p.bmr)}kcal`;
+  const losing = p.status === 'ok' || p.status === 'too_fast';
   let notice = '';
-
-  if (p.status === 'ok' || p.status === 'too_fast') {
-    sub = `유지 칼로리 ${comma(p.tdee)}kcal에서 하루 ${comma(p.deficit)}kcal 줄이기`;
-    chips.push(`<span class="chip lg">주당 -${p.weeklyLoss.toFixed(2)}kg</span>`);
-    chips.push(`<span class="chip lg peach">D-${p.days} · ${p.diffKg.toFixed(1)}kg</span>`);
-  }
-  chips.push(`<span class="chip lg clay">단백질 약 ${p.protein}g</span>`);
-
   if (p.status === 'too_fast') {
     notice = `
       <div class="notice">
         목표 날짜까지 가려면 하루 ${comma(p.needDeficit)}kcal를 줄여야 해서 안전한 속도(주당 체중의 1%, 기초대사량 이상 섭취)를 넘어요.
-        권장 칼로리는 안전 하한선에 맞췄어요. 이 속도라면 <strong>${esc(safeDateLabel(p))}</strong>쯤 도달해요.
+        처방은 안전 하한선에 맞췄어요. 이 속도라면 <strong>${esc(safeDateLabel(p))}</strong>쯤 도달해요.
         <br><button type="button" class="link-btn" id="k-fix-date">목표 날짜를 ${esc(safeDateLabel(p))}로 바꾸기</button>
       </div>`;
   } else if (p.status === 'reached') {
@@ -442,16 +448,102 @@ function kcalHtml(p, input) {
   } else if (p.status === 'no_room') {
     notice = '<div class="notice">지금 활동량에서는 더 줄일 여유가 없어요. 활동량을 늘리는 쪽으로 코치와 이야기해봐요.</div>';
   } else if (p.status === 'maintain') {
-    notice = '<p class="hint">목표 체중과 날짜를 정하면 감량용 권장 칼로리로 바꿔드려요.</p>';
+    notice = '<p class="hint">목표 체중과 날짜를 정하면 감량 처방으로 바꿔드려요.</p>';
   }
 
+  const pct = (v) => ((v / p.tdee) * 100).toFixed(1);
+  const row = (k, v, cls = '') => `<tr class="${cls}"><th scope="row">${k}</th><td>${v}</td></tr>`;
   return `
-    <div class="kcal-main">
-      <span class="lbl">${p.status === 'ok' || p.status === 'too_fast' ? '하루 권장 섭취' : '하루 유지 칼로리'}</span>
-      <span class="val">${comma(p.target)}<small>kcal</small></span>
+    <div class="rx-grid">
+      <div class="rx">
+        <span class="badge-ico accent">${icon.fork()}</span>
+        <p>하루 동안 섭취할<br>음식 칼로리</p>
+        <strong>${comma(p.target)}<small>kcal</small></strong>
+      </div>
+      <div class="rx">
+        <span class="badge-ico peach">${icon.flame()}</span>
+        <p>하루 동안 소모할<br>운동 칼로리</p>
+        <strong>${comma(p.exercise)}<small>kcal</small></strong>
+      </div>
     </div>
-    <p class="kcal-sub">${sub}</p>
-    <div class="kcal-chips">${chips.join('')}</div>
+
+    <h3 class="rx-title">하루 소비 칼로리 ${comma(p.tdee)}kcal</h3>
+    <div class="rx-bar" role="img" aria-label="기초대사량 ${comma(p.bmr)}, 활동대사량 ${comma(p.activityKcal)}, 소화 에너지 ${comma(p.tef)}킬로칼로리">
+      <div style="width:${pct(p.bmr)}%;background:var(--accent)">${comma(p.bmr)}</div>
+      <div style="width:${pct(p.activityKcal)}%;background:var(--accent2)">${comma(p.activityKcal)}</div>
+      <div style="width:${pct(p.tef)}%;background:var(--clay)">${comma(p.tef)}</div>
+    </div>
+    <div class="legend rx-legend">
+      <span><i style="background:var(--accent)"></i>기초대사량</span>
+      <span><i style="background:var(--accent2)"></i>활동대사량</span>
+      <span><i style="background:var(--clay)"></i>소화 에너지</span>
+    </div>
+
+    <table class="rx-table">
+      <caption class="sr-only">칼로리 처방 상세</caption>
+      <tbody>
+        ${row('기초대사량', `${comma(p.bmr)} kcal`)}
+        ${row('활동대사량', `${comma(p.activityKcal)} kcal`)}
+        ${row('소화에 쓰는 에너지', `${comma(p.tef)} kcal`)}
+        ${row('하루 소비 칼로리', `${comma(p.tdee)} kcal`, 'sum')}
+        ${losing ? row('하루 줄일 칼로리', `−${comma(p.deficit)} kcal`) : ''}
+        ${losing ? row('식단으로', `−${comma(p.deficit - p.exercise)} kcal`, 'sub') : ''}
+        ${losing ? row('운동으로', `−${comma(p.exercise)} kcal`, 'sub') : ''}
+        ${row('음식 섭취 처방', `${comma(p.target)} kcal`, 'sum')}
+        ${row('순 섭취 목표 (섭취 − 운동)', `${comma(p.netGoal)} kcal`)}
+        ${losing ? row('주당 예상 감량', `${p.weeklyLoss.toFixed(2)} kg`) : ''}
+        ${losing ? row('목표까지', `D-${p.days} · ${p.diffKg.toFixed(1)} kg`) : ''}
+        ${row('단백질 권장', `약 ${p.protein} g`)}
+        ${p.bmi ? row('BMI', `${p.bmi.bmi.toFixed(1)} · ${p.bmi.label}`) : ''}
+      </tbody>
+    </table>
     ${notice}
-    <p class="footnote">${esc(p.method)}${input.fatPct ? ` · 체지방률 ${fix1(input.fatPct)}%` : ''} 기준 추정치예요. 혈당 강하제를 복용 중이라면 섭취량을 크게 줄이기 전에 주치의와 상의해주세요.</p>`;
+    <p class="footnote">${esc(p.method)}${input.fatPct ? ` · 체지방률 ${fix1(input.fatPct)}%` : ''} 기준 추정치예요.
+      달력에서는 순 섭취가 ${comma(p.netGoal)}kcal 이하면 목표 달성으로 표시돼요. 혈당 강하제를 복용 중이라면 섭취량을 크게 줄이기 전에 주치의와 상의해주세요.</p>`;
+}
+
+/* ───────── 생리 기록 ───────── */
+function periodHtml() {
+  const st = cycleStats();
+  const isStart = st.periods.some((p) => p.start_date === state.today);
+  const isEnd = st.periods.some((p) => p.end_date === state.today);
+  const info = st.last
+    ? `마지막 시작 ${fmtLong(st.last.start_date).replace(/ \S+요일$/, '')} · 평균 주기 ${Math.round(st.avgCycle)}일${st.gaps.length ? '' : '(기본값)'} · 다음 예정 ${nextLabel(st)}`
+    : '시작일과 종료일을 기록하면 평균 주기와 다음 예정일을 자동으로 계산해요.';
+  return `
+    <div class="card-head" style="margin-bottom:10px">
+      <h2 id="h-period">생리 기록</h2>
+      <a class="link-btn muted" href="#/calendar">다른 날짜는 달력에서</a>
+    </div>
+    <div class="period-btns">
+      <button type="button" class="btn outline" data-period="start" aria-pressed="${isStart}">${isStart ? '오늘 시작함' : '오늘 생리 시작'}</button>
+      <button type="button" class="btn outline" data-period="end" aria-pressed="${isEnd}">${isEnd ? '오늘 종료함' : '오늘 생리 종료'}</button>
+    </div>
+    <p class="hint">${esc(info)}</p>`;
+}
+
+function bindPeriod(view) {
+  const card = $('#period-card', view);
+  card.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-period]');
+    if (!btn) return;
+    const on = btn.getAttribute('aria-pressed') !== 'true';
+    btn.disabled = true;
+    try {
+      const res = await api.setPeriod(state.today, btn.dataset.period, on);
+      state.periods = res.periods;
+      Object.assign(state.settings, res.settings);
+      card.innerHTML = periodHtml();
+      $('.page-title p', view).innerHTML = subtitleHtml();
+      toast(on ? '기록했어요' : '기록을 지웠어요');
+    } catch (err) {
+      toast(err.message);
+      btn.disabled = false;
+    }
+  });
+}
+
+function subtitleHtml() {
+  const label = cycleLabel(cycleStats());
+  return `${fmtLong(state.today)}${label ? ` · ${esc(label)}` : ''}`;
 }

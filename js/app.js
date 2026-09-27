@@ -6,6 +6,7 @@ import { icon } from './icons.js';
 import { $, $$, esc } from './utils.js';
 import * as record from './screens/record.js';
 import * as journey from './screens/journey.js';
+import * as calendar from './screens/calendar.js';
 import * as coach from './screens/coach.js';
 import * as chat from './screens/chat.js';
 import * as settings from './screens/settings.js';
@@ -15,6 +16,7 @@ const tabbar = $('#tabbar');
 
 const ROUTES = {
   record: { screen: record, tab: 'record' },
+  calendar: { screen: calendar, tab: 'calendar' },
   journey: { screen: journey, tab: 'journey' },
   coach: { screen: coach, tab: 'coach' },
   archive: { screen: coach, tab: 'coach', mode: 'archive' },
@@ -37,7 +39,7 @@ function route() {
 }
 
 function renderTabbar() {
-  const items = { record: ['기록', icon.tabRecord()], journey: ['여정', icon.tabJourney()], coach: ['코치', icon.tabCoach()] };
+  const items = { record: ['기록', icon.tabRecord()], calendar: ['달력', icon.tabCalendar()], journey: ['여정', icon.tabJourney()], coach: ['코치', icon.tabCoach()] };
   $$('a', tabbar).forEach((a) => {
     const [label, svg] = items[a.dataset.tab];
     a.innerHTML = `${svg}<span>${label}</span>`;
@@ -55,7 +57,7 @@ function showLogin({ overlay = false } = {}) {
   box.className = 'center-screen';
   box.innerHTML = `
     <div class="logo">${icon.heart(30)}</div>
-    <h1>몸무게일기</h1>
+    <h1>건강일기</h1>
     <p>${overlay ? '로그인이 만료됐어요. 다시 로그인하면 이어서 진행할게요.' : '대사 코치와 함께하는 나만의 기록장이에요.<br>본인 구글 계정으로 로그인해주세요.'}</p>
     <div class="gbtn"></div>`;
   if (overlay) {

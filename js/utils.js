@@ -64,8 +64,8 @@ export function cycleDay(settings, date) {
   const len = Number(settings.cycle_length) || 28;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(start || '')) return null;
   const diff = daysBetween(start, date);
-  if (diff < 0) return null;
-  return (diff % len) + 1;
+  if (diff < 0 || diff >= 90) return null;
+  return diff + 1;
 }
 export function cyclePhase(day, settings = {}) {
   if (!day) return '';
@@ -78,14 +78,14 @@ export function cyclePhase(day, settings = {}) {
 }
 
 /* ───────── 자동 판정 배지 ───────── */
-export function judge(cur, prev) {
+export function judge(cur, prev, settings = {}) {
   if (!cur || !prev || cur.weight == null || prev.weight == null) return null;
   const dw = cur.weight - prev.weight;
   const df = cur.body_fat_pct != null && prev.body_fat_pct != null ? cur.body_fat_pct - prev.body_fat_pct : 0;
   const dm = cur.muscle_mass != null && prev.muscle_mass != null ? cur.muscle_mass - prev.muscle_mass : 0;
   if (dw <= -0.1 && df < 0) return { label: '황금 감량기', tone: '' };
   if (dw >= 0.3 && df <= 0) return { label: '탄수화물 펌핑', tone: 'clay' };
-  if (dw > 0 && cur.cycle_day && cur.cycle_day >= 17) return { label: '황체기 수분', tone: 'peach' };
+  if (dw > 0 && cur.cycle_day && cur.cycle_day >= 17 && settings.on_contraceptive !== 'true') return { label: '황체기 수분', tone: 'peach' };
   if (dm >= 0.2 && df <= 0) return { label: '근육 적립', tone: '' };
   if (dw >= 0.3 && df > 0.3) return { label: '리듬 조율', tone: 'clay' };
   if (Math.abs(dw) < 0.2) return { label: '안정 유지', tone: 'neutral' };

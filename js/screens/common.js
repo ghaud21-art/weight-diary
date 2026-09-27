@@ -4,7 +4,7 @@ import { PREVIEW_MODE } from '../config.js';
 
 export const topbar = () => `
   <header class="topbar">
-    <div class="brand">${icon.heart()}<span>몸무게일기</span></div>
+    <div class="brand">${icon.heart()}<span>건강일기</span></div>
     <a class="icon-btn" href="#/settings" aria-label="설정">${icon.gear()}</a>
   </header>`;
 

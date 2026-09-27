@@ -7,4 +7,5 @@ export const CONFIG = {
 };
 
 // GAS_URL이 비어 있으면 브라우저 안에서만 동작하는 미리보기 모드(가짜 데이터)로 실행됩니다.
-export const PREVIEW_MODE = !CONFIG.GAS_URL;
+// 주소 끝에 ?preview를 붙여도 미리보기 모드로 열 수 있어요.
+export const PREVIEW_MODE = !CONFIG.GAS_URL || new URLSearchParams(location.search).has('preview');

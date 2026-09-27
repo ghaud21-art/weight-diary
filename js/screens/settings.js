@@ -3,8 +3,8 @@ import { icon } from '../icons.js';
 import { PREVIEW_MODE } from '../config.js';
 import { signOut, currentEmail } from '../auth.js';
 import { resetPreview } from '../mock.js';
-import { state, applyTheme, saveSettings } from '../store.js';
-import { $, $$, esc, toast } from '../utils.js';
+import { state, applyTheme, saveSettings, cycleStats } from '../store.js';
+import { $, $$, esc, toast, fmtLong } from '../utils.js';
 import { backbar } from './common.js';
 
 export function render(view) {
@@ -33,12 +33,13 @@ export function render(view) {
       <section class="card r18 flat" aria-labelledby="h-cycle">
         <div class="card-head" style="margin-bottom:12px">
           <h2 id="h-cycle" style="font-size:14px">생리주기</h2>
-          <button type="button" class="link-btn" id="cycle-today">오늘 시작했어요</button>
+          <a class="link-btn" href="#/calendar">달력에서 기록하기</a>
         </div>
-        ${field('cycle_start_date', '최근 시작일', 'date', s.cycle_start_date, '', 'wide')}
-        ${field('cycle_length', '평균 주기', 'number', s.cycle_length, '일')}
+        ${cycleInfoHtml()}
+        ${field('cycle_length', '기본 주기', 'number', s.cycle_length, '일')}
+        <p class="hint">시작일이 2번 이상 기록되면 최근 6번의 평균 주기로 자동 계산돼요. 그 전까지는 기본 주기를 써요.</p>
         <div class="toggle-row" style="padding-bottom:0">
-          <label for="n-pill">피임약 복용 중<small>자연 주기 단계(황체기 등) 대신 복용 주기로 해석해요</small></label>
+          <label for="n-pill">피임약 복용 중<small>주기 조절용 — 자연 주기 단계(황체기 등) 해석을 쓰지 않아요</small></label>
           <input id="n-pill" class="switch" type="checkbox" ${s.on_contraceptive === 'true' ? 'checked' : ''}>
         </div>
       </section>
@@ -47,7 +48,7 @@ export function render(view) {
         <h2 id="h-goal" style="font-size:14px;margin-bottom:12px">목표</h2>
         ${field('goal_body_fat_pct', '체지방률 목표', 'number', s.goal_body_fat_pct, '%')}
         ${field('goal_muscle_mass', '골격근량 목표', 'number', s.goal_muscle_mass, 'kg')}
-        <p class="hint">목표 체중·날짜는 기록 화면의 칼로리 플랜 카드에서 정해요.</p>
+        <p class="hint">목표 체중·날짜는 기록 화면의 칼로리 처방 카드에서 정해요.</p>
       </section>
 
       <section class="card r18 flat" style="padding:0">
@@ -88,10 +89,6 @@ export function render(view) {
       saveSettings({ [key]: val });
     }),
   );
-  $('#cycle-today', view).addEventListener('click', () => {
-    $('[data-setting="cycle_start_date"]', view).value = state.today;
-    saveSettings({ cycle_start_date: state.today });
-  });
 
   $('#n-pill', view).addEventListener('change', (e) => saveSettings({ on_contraceptive: String(e.target.checked) }));
 
@@ -120,6 +117,20 @@ export function render(view) {
     await signOut();
     location.reload();
   });
+}
+
+function cycleInfoHtml() {
+  const st = cycleStats();
+  const md = (d) => fmtLong(d).replace(/ \S+요일$/, '');
+  const rows = st.last
+    ? [
+        ['최근 시작일', md(st.last.start_date)],
+        ['평균 주기', st.gaps.length ? `${Math.round(st.avgCycle)}일 (최근 ${st.gaps.length}회${st.spread != null ? `, 편차 ${st.spread}일` : ''})` : '기록 부족'],
+        ['평균 기간', `${Math.round(st.avgLen)}일`],
+        ['다음 예정일', md(st.next)],
+      ]
+    : [['기록', '아직 없어요']];
+  return `<dl class="info-list">${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>`;
 }
 
 function themeCard(value, name, desc, colors, border) {

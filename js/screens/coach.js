@@ -1,6 +1,6 @@
 import { api } from '../api.js';
 import { icon } from '../icons.js';
-import { state, recordOn, prevRecord, upsertRecord } from '../store.js';
+import { state, morningOn as recordOn, prevRecord, upsertRecord } from '../store.js';
 import { $, esc, fmtLong, fmtShort, fix1, toast } from '../utils.js';
 import { backbar, deltaChip } from './common.js';
 
