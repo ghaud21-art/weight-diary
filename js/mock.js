@@ -1,7 +1,7 @@
 // 미리보기 모드: GAS 없이 브라우저 localStorage에 가짜 데이터로 동작 (실제 AI 호출 없음)
 import { todayStr, addDays, cycleDay, daysBetween } from './utils.js';
 
-const KEY = 'mc_preview_db_v2';
+const KEY = 'mc_preview_db_v3';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function seed() {
@@ -44,7 +44,11 @@ function seed() {
       kcal_goal: intake ? 1600 : null,
     });
   }
-  return { settings, meds, records, periods, chat: [] };
+  const chat = [
+    { date: addDays(today, -3), timestamp: '1', role: 'user', message: '생리 시작하고 나서 계속 우울해요' },
+    { date: addDays(today, -3), timestamp: '2', role: 'coach', message: '이 시기엔 호르몬 변화로 기분이 가라앉기 쉬워요. 오늘은 따뜻한 차 한 잔과 일찍 잠드는 걸 목표로 해봐요.' },
+  ];
+  return { settings, meds, records, periods, chat };
 }
 
 function db() {
@@ -132,8 +136,20 @@ export async function mockCall(action, p) {
         rec = { date: p.date, weight: null, muscle_mass: null, body_fat_pct: null, mood: '', mood_note: '', medications_taken: [], cycle_day: cycleDay(d.settings, p.date), coach_feedback: null, kcal_goal: null };
         d.records.push(rec);
       }
-      rec.intake_kcal = p.intake_kcal ?? null;
-      rec.exercise_kcal = p.exercise_kcal ?? null;
+      if (p.food_note !== undefined) rec.food_note = p.food_note;
+      if (p.exercise_note !== undefined) rec.exercise_note = p.exercise_note;
+      if (p.estimate) {
+        // 미리보기용 가짜 판정: 쉼표·줄바꿈으로 나눈 항목마다 350kcal, 운동 항목마다 150kcal
+        const split = (t) => (t || '').split(/[,\n/]+/).map((x) => x.trim()).filter(Boolean);
+        const food = split(rec.food_note).map((name) => ({ name, amount: '1인분', kcal: 350 }));
+        const ex = split(rec.exercise_note).map((name) => ({ name, amount: '30분', kcal: 150 }));
+        rec.food_detail = { food_items: food, food_total: food.length * 350, exercise_items: ex, exercise_total: ex.length * 150, note: '미리보기 모드라 실제 AI 계산이 아니에요.' };
+        rec.intake_kcal = food.length ? rec.food_detail.food_total : null;
+        rec.exercise_kcal = ex.length ? rec.food_detail.exercise_total : 0;
+      } else {
+        if (p.intake_kcal !== undefined) rec.intake_kcal = p.intake_kcal;
+        if (p.exercise_kcal !== undefined) rec.exercise_kcal = p.exercise_kcal;
+      }
       if (rec.kcal_goal == null) rec.kcal_goal = Number(d.settings.calorie_net_goal) || null;
       save(d);
       return rec;
@@ -186,7 +202,10 @@ export async function mockCall(action, p) {
     }
     case 'getChat': {
       const rec = d.records.find((r) => r.date === today);
-      return { messages: d.chat.filter((m) => m.date === today), mood: rec?.mood || '', moodNote: rec?.mood_note || '' };
+      const last = sortedPeriods(d).pop();
+      const since = last ? daysBetween(last.start_date, today) : -1;
+      const phase = since >= 0 && since < 5 ? { phase: 'period', day: since + 1 } : { phase: 'other' };
+      return { today, messages: d.chat.slice(-80), mood: rec?.mood || '', moodNote: rec?.mood_note || '', phase };
     }
     case 'sendChat': {
       const crisis = /죽고\s*싶|자살|자해|사라지고\s*싶/.test(p.message);

@@ -465,3 +465,26 @@ body.no-tabbar #view { padding-bottom: 0; }
 .rx-col.goal.safe strong { color: var(--ink); }
 .rx-compare ~ .hint { margin-top: 8px; }
 .kcal-result > .notice:first-child { margin-top: 0; }
+/* 마음 카드 저장 · 저장 안 됨 표시줄 */
+.mood-save { margin-top: 12px; }
+.dirty-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 20; width: calc(100% - 28px); max-width: 452px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 10px 10px 16px; border-radius: 16px; background: var(--ink); color: var(--bg); font-size: 13px; box-shadow: 0 6px 20px rgba(0,0,0,0.15); }
+.dirty-bar[hidden] { display: none; }
+.dirty-bar .btn { width: auto; padding: 8px 16px; }
+/* 식단 · 운동 */
+.input.note { resize: vertical; line-height: 1.5; font-size: 13px; min-height: 44px; }
+.food-sum { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+.food-sum > div { background: var(--bg); border-radius: 14px; padding: 10px; display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
+.food-sum .k { font-size: 11px; color: var(--muted); }
+.food-sum .v { font-size: 16px; font-weight: 700; }
+.food-sum .v small { font-size: 11px; font-weight: 400; color: var(--muted); margin-left: 2px; }
+.chip.over { color: var(--over); background: var(--over-soft); }
+.food-items { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; }
+.food-items li { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; padding: 6px 2px; border-bottom: 1px dashed var(--stroke); }
+.food-items li small { color: var(--muted); font-size: 11px; }
+.food-items li b { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.food-items li b::after { content: " kcal"; font-weight: 400; color: var(--muted); font-size: 11px; }
+.food-items.ex li b { color: var(--accent2); }
+.sheet-group .note + .label { margin-top: 2px; }
+/* 채팅 날짜 구분 */
+.chat-date { align-self: center; font-size: 11px; color: var(--muted); background: var(--card); border: 1px solid var(--stroke); border-radius: 999px; padding: 3px 12px; margin: 4px 0; }
+.chat-date.memory { background: var(--accent2-soft); border-color: transparent; }

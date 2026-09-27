@@ -1,7 +1,6 @@
 import { api } from '../api.js';
 import { icon } from '../icons.js';
-import { state, activeMeds, morningOn as recordOn, latestRecord, upsertRecord, saveSettings, cycleStats, setMeds, setPeriods, applyPeriodLocal } from '../store.js';
-import { cycleLabel, nextLabel } from '../cycle.js';
+import { state, activeMeds, morningOn as recordOn, recordOn as dayRecordOn, latestRecord, upsertRecord, saveSettings, setMeds } from '../store.js';
 import { $, $$, esc, num, fix1, comma, fmtLong, greeting, movingAvg, debounce, toast, resizeImage } from '../utils.js';
 import { calcPlan, planSummary, safeDateLabel, ACTIVITY } from '../calorie.js';
 import { topbar, previewBanner, timingTone } from './common.js';
@@ -17,7 +16,15 @@ const MOODS = [
 function initDraft() {
   if (state.draft && state.draft.date === state.today) return state.draft;
   const rec = recordOn(state.today);
+  const day = dayRecordOn(state.today);
+  const kept = readDraft();
+  if (kept) {
+    state.draft = { food_note: '', exercise_note: '', ...kept, kcalWeight: null };
+    return state.draft;
+  }
   state.draft = {
+    food_note: day?.food_note || '',
+    exercise_note: day?.exercise_note || '',
     date: state.today,
     weight: rec?.weight ?? null,
     muscle_mass: rec?.muscle_mass ?? null,
@@ -40,7 +47,7 @@ export function render(view) {
     ${topbar()}
     <div class="page-title">
       <h1>${esc(greeting(s.nickname || '회원님'))}</h1>
-      <p>${subtitleHtml()}</p>
+      <p>${fmtLong(state.today)}</p>
     </div>
     ${previewBanner()}
     <div class="stack">
@@ -74,9 +81,8 @@ export function render(view) {
         </fieldset>
         <label class="label" for="mood-note" style="margin:14px 0 6px">오늘 있었던 일 (선택)</label>
         <input class="input" id="mood-note" type="text" maxlength="300" placeholder="한 줄로 편하게 적어보세요" value="${esc(d.mood_note)}">
+        <button type="button" class="btn mood-save" data-save>${saveLabel(saved)}</button>
       </section>
-
-      <section class="card" aria-labelledby="h-period" id="period-card">${periodHtml()}</section>
 
       <section class="card" aria-labelledby="h-med">
         <h2 id="h-med">오늘의 복용약</h2>
@@ -95,6 +101,8 @@ export function render(view) {
       <button type="button" class="btn lg" data-save>${saveLabel(saved)}</button>
 
       <div id="coach-preview">${previewHtml()}</div>
+
+      <section class="card" aria-labelledby="h-food" id="food-card">${foodHtml()}</section>
 
       <section class="card" aria-labelledby="h-goal" id="goal-card">${goalHtml()}</section>
 
@@ -125,15 +133,20 @@ export function render(view) {
         </div>
         <div class="kcal-result" id="kcal-result"></div>
       </section>
+    </div>
+    <div class="dirty-bar" id="dirty-bar" role="status" hidden>
+      <span>저장하지 않은 기록이 있어요</span>
+      <button type="button" class="btn bar-save" data-save>저장</button>
     </div>`;
 
   bindInbody(view);
   bindMood(view);
   bindMeds(view);
   bindKcal(view);
-  bindPeriod(view);
+  bindFood(view);
   bindRetry(view);
   $$('[data-save]', view).forEach((b) => b.addEventListener('click', () => onSave(view)));
+  markDirty(view);
 }
 
 function numField(key, label, val, placeholder) {
@@ -224,6 +237,7 @@ function bindInbody(view) {
   $$('.input.num', view).forEach((inp) =>
     inp.addEventListener('input', () => {
       d[inp.dataset.key] = num(inp.value);
+      markDirty(view);
       if (inp.dataset.key === 'weight' || inp.dataset.key === 'body_fat_pct') updateKcal(view);
     }),
   );
@@ -254,6 +268,7 @@ function bindInbody(view) {
       txt.textContent = found ? '다른 사진으로 다시 읽기' : '수치를 찾지 못했어요. 직접 입력해주세요';
       hint.hidden = !found;
       hint.textContent = '사진에서 읽어온 값이에요. 맞는지 확인하고 저장해주세요.';
+      markDirty(view);
       updateKcal(view);
     } catch (err) {
       txt.textContent = '읽기에 실패했어요. 직접 입력하거나 다시 시도해주세요';
@@ -266,8 +281,8 @@ function bindInbody(view) {
 
 function bindMood(view) {
   const d = state.draft;
-  $$('input[name="mood"]', view).forEach((r) => r.addEventListener('change', () => (d.mood = r.value)));
-  $('#mood-note', view).addEventListener('input', (e) => (d.mood_note = e.target.value));
+  $$('input[name="mood"]', view).forEach((r) => r.addEventListener('change', () => { d.mood = r.value; markDirty(view); }));
+  $('#mood-note', view).addEventListener('input', (e) => { d.mood_note = e.target.value; markDirty(view); });
 }
 
 /* ───────── 복용약 ───────── */
@@ -278,6 +293,7 @@ function bindMeds(view) {
     if (e.target.type !== 'checkbox') return;
     const name = e.target.value;
     d.taken = e.target.checked ? [...new Set([...d.taken, name])] : d.taken.filter((n) => n !== name);
+    markDirty(view);
   });
 
   const form = $('#med-add', view);
@@ -314,7 +330,7 @@ async function onSave(view) {
   const btns = $$('[data-save]', view);
   const setBtns = (busy) => btns.forEach((b) => {
     b.disabled = busy;
-    b.innerHTML = busy ? '<span class="spinner"></span> 저장하는 중…' : saveLabel(!!recordOn(state.today));
+    b.innerHTML = busy ? '<span class="spinner"></span> 저장하는 중…' : b.classList.contains('bar-save') ? '저장' : saveLabel(!!recordOn(state.today));
   });
   setBtns(true);
   const refreshPreview = () => {
@@ -335,6 +351,7 @@ async function onSave(view) {
       skipFeedback: true,
     });
     upsertRecord(res.record);
+    markDirty(view);
     feedbackPending = true;
     toast('저장했어요. 코치가 피드백을 쓰고 있어요');
     setBtns(false);
@@ -554,57 +571,92 @@ function kcalHtml(p, input) {
       달력에서는 순 섭취가 ${comma(p.netGoal)}kcal 이하면 목표 달성으로 표시돼요. 혈당 강하제를 복용 중이라면 섭취량을 크게 줄이기 전에 주치의와 상의해주세요.</p>`;
 }
 
-/* ───────── 생리 기록 ───────── */
-function periodHtml() {
-  const st = cycleStats();
-  const isStart = st.periods.some((p) => p.start_date === state.today);
-  const isEnd = st.periods.some((p) => p.end_date === state.today);
-  const info = st.last
-    ? `마지막 시작 ${fmtLong(st.last.start_date).replace(/ \S+요일$/, '')} · 평균 주기 ${Math.round(st.avgCycle)}일${st.gaps.length ? '' : '(기본값)'} · 다음 예정 ${nextLabel(st)}`
-    : '시작일과 종료일을 기록하면 평균 주기와 다음 예정일을 자동으로 계산해요.';
-  return `
-    <div class="card-head" style="margin-bottom:10px">
-      <h2 id="h-period">생리 기록</h2>
-      <a class="link-btn muted" href="#/calendar">다른 날짜는 달력에서</a>
-    </div>
-    <div class="period-btns">
-      <button type="button" class="btn outline" data-period="start" aria-pressed="${isStart}">${isStart ? '오늘 시작함' : '오늘 생리 시작'}</button>
-      <button type="button" class="btn outline" data-period="end" aria-pressed="${isEnd}">${isEnd ? '오늘 종료함' : '오늘 생리 종료'}</button>
-    </div>
-    <p class="hint">${esc(info)}</p>`;
+/* ───────── 저장 안 한 변경 표시 · 입력 중인 값 보관 ───────── */
+const DRAFT_KEY = 'hd_draft';
+const sameNum = (a, b) => (a == null ? null : Number(a)) === (b == null ? null : Number(b));
+
+function isDirty() {
+  const d = state.draft;
+  const r = recordOn(state.today);
+  const taken = (list) => [...(list || [])].sort().join('|');
+  if (!r) return d.weight != null || d.muscle_mass != null || d.body_fat_pct != null || !!d.mood || !!d.mood_note.trim();
+  return !sameNum(d.weight, r.weight) || !sameNum(d.muscle_mass, r.muscle_mass) || !sameNum(d.body_fat_pct, r.body_fat_pct) ||
+    d.mood !== (r.mood || '') || d.mood_note.trim() !== (r.mood_note || '') || taken(d.taken) !== taken(r.medications_taken);
 }
 
-function bindPeriod(view) {
-  const card = $('#period-card', view);
-  const repaint = () => {
-    card.innerHTML = periodHtml();
-    $('.page-title p', view).innerHTML = subtitleHtml();
-  };
-  card.addEventListener('click', async (e) => {
-    const btn = e.target.closest('[data-period]');
-    if (!btn) return;
-    const type = btn.dataset.period;
-    const on = btn.getAttribute('aria-pressed') !== 'true';
-    let before;
+/** 입력이 바뀔 때마다: 기기에 임시 보관 + 저장 안 됨 표시 갱신 */
+function markDirty(view) {
+  try { localStorage.setItem(DRAFT_KEY, JSON.stringify(state.draft)); } catch {}
+  const bar = $('#dirty-bar', view);
+  if (bar) bar.hidden = !isDirty();
+}
+
+function readDraft() {
+  try {
+    const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
+    return d && d.date === state.today ? d : null;
+  } catch {
+    return null;
+  }
+}
+
+/* ───────── 오늘 먹은 것 · 운동 (AI 칼로리 판정) ───────── */
+function foodHtml() {
+  const d = state.draft;
+  return `
+    <div class="card-head">
+      <h2 id="h-food">오늘 먹은 것 · 운동</h2>
+      <span class="meta">메모하면 AI가 칼로리를 계산해요</span>
+    </div>
+    <label class="label" for="food-note">먹은 것</label>
+    <textarea class="input note" id="food-note" rows="3" maxlength="1000"
+      placeholder="예: 아침 삶은 달걀 2개, 아메리카노&#10;점심 김치찌개에 밥 반 공기&#10;간식 바나나 1개">${esc(d.food_note)}</textarea>
+    <label class="label" for="ex-note" style="margin-top:10px">운동</label>
+    <textarea class="input note" id="ex-note" rows="2" maxlength="1000" placeholder="예: 걷기 40분, 8천보 / 필라테스 50분">${esc(d.exercise_note)}</textarea>
+    <button type="button" class="btn" id="food-save" style="margin-top:12px">AI로 칼로리 계산해서 저장</button>
+    <div id="food-result">${foodResultHtml(dayRecordOn(state.today))}</div>`;
+}
+
+export function foodResultHtml(rec) {
+  if (!rec || (rec.intake_kcal == null && rec.exercise_kcal == null)) return '';
+  const det = rec.food_detail;
+  const intake = rec.intake_kcal || 0, ex = rec.exercise_kcal || 0, net = intake - ex;
+  const goal = rec.kcal_goal ?? num(state.settings.calorie_net_goal);
+  const items = (list) => (list || []).map((x) => `
+    <li><span>${esc(x.name)}${x.amount ? ` <small>${esc(x.amount)}</small>` : ''}</span><b>${comma(x.kcal)}</b></li>`).join('');
+  return `
+    <div class="food-sum">
+      <div><p class="k">먹은 칼로리</p><p class="v">${comma(intake)}<small>kcal</small></p></div>
+      <div><p class="k">운동 칼로리</p><p class="v">${comma(ex)}<small>kcal</small></p></div>
+      <div><p class="k">순 섭취</p><p class="v">${comma(net)}<small>kcal</small></p>
+        ${goal ? `<span class="chip ${net <= goal ? 'peach' : 'over'}">${net <= goal ? '목표 달성' : `${comma(net - goal)} 초과`}</span>` : ''}</div>
+    </div>
+    ${det?.food_items?.length ? `<ul class="food-items" aria-label="음식별 칼로리">${items(det.food_items)}</ul>` : ''}
+    ${det?.exercise_items?.length ? `<ul class="food-items ex" aria-label="운동별 칼로리">${items(det.exercise_items)}</ul>` : ''}
+    ${det?.note ? `<p class="hint">${esc(det.note)}</p>` : ''}
+    <p class="hint">AI 추정치예요. 숫자를 직접 고치고 싶으면 <a class="link-btn" href="#/calendar">달력</a>에서 오늘을 눌러주세요.</p>`;
+}
+
+function bindFood(view) {
+  const d = state.draft;
+  $('#food-note', view).addEventListener('input', (e) => { d.food_note = e.target.value; markDirty(view); });
+  $('#ex-note', view).addEventListener('input', (e) => { d.exercise_note = e.target.value; markDirty(view); });
+  $('#food-save', view).addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    if (!d.food_note.trim() && !d.exercise_note.trim()) return toast('먹은 것이나 운동을 적어주세요');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> AI가 칼로리를 계산하는 중…';
     try {
-      before = applyPeriodLocal(state.today, type, on);
+      const rec = await api.saveDay({ date: state.today, food_note: d.food_note.trim(), exercise_note: d.exercise_note.trim(), estimate: true });
+      upsertRecord(rec);
+      const box = $('#food-result', view);
+      if (box) box.innerHTML = foodResultHtml(rec);
+      toast(`먹은 칼로리 ${comma(rec.intake_kcal || 0)}kcal로 기록했어요`);
     } catch (err) {
-      return toast(err.message);
-    }
-    repaint();
-    toast(on ? '기록했어요' : '기록을 지웠어요');
-    try {
-      const res = await api.setPeriod(state.today, type, on);
-      setPeriods(res.periods, res.settings);
-    } catch (err) {
-      setPeriods(before);
-      repaint();
-      toast('저장 실패: ' + err.message);
+      toast('계산 실패: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'AI로 칼로리 계산해서 저장';
     }
   });
-}
-
-function subtitleHtml() {
-  const label = cycleLabel(cycleStats());
-  return `${fmtLong(state.today)}${label ? ` · ${esc(label)}` : ''}`;
 }

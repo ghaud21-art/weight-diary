@@ -1,7 +1,6 @@
 import { icon } from '../icons.js';
-import { state, latestRecord, bodyRecords, cycleStats } from '../store.js';
+import { state, latestRecord, bodyRecords } from '../store.js';
 import { $, $$, esc, addDays, daysBetween, fmtShort, fmtMD, weekday, fix1, judge } from '../utils.js';
-import { cycleLabel } from '../cycle.js';
 import { topbar } from './common.js';
 
 const W = 326, H = 130, PAD = 12;
@@ -9,7 +8,7 @@ const W = 326, H = 130, PAD = 12;
 export function render(view) {
   const last = latestRecord();
   const lastJudge = last ? judge(last, bodyRecords().filter((r) => r.date < last.date).pop(), state.settings) : null;
-  const sub = [cycleLabel(cycleStats()), lastJudge?.label].filter(Boolean).join(' · ') || '기록이 쌓일수록 흐름이 보여요';
+  const sub = lastJudge?.label || '기록이 쌓일수록 흐름이 보여요';
 
   view.innerHTML = `
     ${topbar()}

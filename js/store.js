@@ -56,7 +56,10 @@ export function readCache() {
   }
 }
 export function clearCache() {
-  try { localStorage.removeItem(CACHE_KEY); } catch {}
+  try {
+    localStorage.removeItem(CACHE_KEY);
+    localStorage.removeItem('hd_draft');
+  } catch {}
 }
 
 export const cycleStats = () => periodStats(state.periods, state.settings, state.today);

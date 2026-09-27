@@ -1,7 +1,7 @@
 import { api } from '../api.js';
 import { icon } from '../icons.js';
-import { state, recordOn } from '../store.js';
-import { $, esc, toast } from '../utils.js';
+import { state, morningOn } from '../store.js';
+import { $, esc, toast, fmtLong } from '../utils.js';
 
 const GREETING = {
   hard: "오늘 컨디션 체크인에서 '힘듦'을 선택하셨네요. 무슨 일이 있었는지 편하게 얘기해주실래요?",
@@ -9,6 +9,18 @@ const GREETING = {
   good: '오늘 컨디션이 좋다고 하셨네요. 그 기운을 어떻게 이어가면 좋을지 같이 이야기해볼까요?',
   none: '안녕하세요. 오늘 몸과 마음은 어떠세요? 편하게 이야기해주세요.',
 };
+
+/** 오늘 첫 인사: 생리 시기면 그 시기를 먼저 챙기고, 아니면 마음 체크인 기준 */
+function greeting(mood, phase) {
+  if (phase?.phase === 'period') {
+    return `오늘은 생리 ${phase.day}일째네요. 이 시기엔 몸도 마음도 평소보다 무거울 수 있어요. ` +
+      (mood === 'hard' ? '체크인에서도 힘들다고 하셨는데, 어떤 게 제일 힘드셨어요?' : '오늘은 어떻게 지내고 계세요?');
+  }
+  if (phase?.phase === 'pre') {
+    return `생리 ${phase.predicted ? '예정일' : '시작'}까지 ${phase.before}일 정도 남았어요. 요즘 기분이나 컨디션에 달라진 게 있으면 편하게 얘기해주세요.`;
+  }
+  return GREETING[mood] || GREETING.none;
+}
 
 export function render(view) {
   view.innerHTML = `
@@ -34,6 +46,15 @@ export function render(view) {
   let busy = false;
 
   const scroll = () => (log.scrollTop = log.scrollHeight);
+  let shownDate = '';
+  const divider = (date) => {
+    if (date === shownDate) return;
+    shownDate = date;
+    const el = document.createElement('p');
+    el.className = 'chat-date';
+    el.textContent = date === state.today ? '오늘' : fmtLong(date);
+    log.appendChild(el);
+  };
   const add = (role, text, extra = '') => {
     const el = document.createElement('div');
     el.className = `msg ${role === 'user' ? 'me' : ''} ${extra}`;
@@ -67,12 +88,22 @@ export function render(view) {
     try {
       const res = await api.getChat();
       t.remove();
-      const mood = res.mood || recordOn(state.today)?.mood || 'none';
-      if (!res.messages.length) add('coach', GREETING[mood] || GREETING.none);
-      res.messages.forEach((m) => add(m.role, m.message));
+      const msgs = res.messages || [];
+      if (msgs.some((m) => m.date !== state.today)) {
+        const note = document.createElement('p');
+        note.className = 'chat-date memory';
+        note.textContent = '지난 대화를 기억하고 이어서 이야기해요';
+        log.appendChild(note);
+      }
+      msgs.forEach((m) => { divider(m.date); add(m.role, m.message); });
+      if (!msgs.some((m) => m.date === state.today)) {
+        divider(state.today);
+        add('coach', greeting(res.mood || morningOn(state.today)?.mood || 'none', res.phase));
+      }
     } catch (err) {
       t.remove();
-      add('coach', GREETING[recordOn(state.today)?.mood || 'none']);
+      divider(state.today);
+      add('coach', greeting(morningOn(state.today)?.mood || 'none'));
       toast('지난 대화를 불러오지 못했어요');
     }
     ready();

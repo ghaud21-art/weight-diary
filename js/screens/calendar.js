@@ -5,6 +5,7 @@ import { $, $$, esc, num, fix1, comma, addDays, fmtLong, toast } from '../utils.
 import { dayStatus } from '../calorie.js';
 import { periodMarks, nextLabel } from '../cycle.js';
 import { topbar } from './common.js';
+import { foodResultHtml } from './record.js';
 
 const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 const loaded = new Set();
@@ -143,6 +144,13 @@ function summaryHtml(mi) {
 }
 
 /* ───────── 날짜 상세 시트 ───────── */
+function syncTodayDraft(date, food, ex) {
+  if (date !== state.today || !state.draft) return;
+  state.draft.food_note = food;
+  state.draft.exercise_note = ex;
+  try { localStorage.setItem('hd_draft', JSON.stringify(state.draft)); } catch {}
+}
+
 function openSheet(view, date) {
   const dlg = $('#day-sheet', view);
   const rec = recordOn(date);
@@ -167,7 +175,17 @@ function openSheet(view, date) {
       </div>
 
       <fieldset class="sheet-group">
-        <legend>칼로리</legend>
+        <legend>식단 · 운동</legend>
+        <label class="label" for="d-food">먹은 것</label>
+        <textarea class="input note" id="d-food" rows="3" maxlength="1000" placeholder="예: 점심 김치찌개에 밥 반 공기, 저녁 닭가슴살 샐러드">${esc(rec?.food_note || '')}</textarea>
+        <label class="label" for="d-ex">운동</label>
+        <textarea class="input note" id="d-ex" rows="2" maxlength="1000" placeholder="예: 걷기 40분">${esc(rec?.exercise_note || '')}</textarea>
+        <button type="button" class="btn outline" id="d-ai">AI로 칼로리 계산</button>
+        <div id="d-ai-result">${rec?.food_detail ? foodResultHtml(rec).replace(/<p class="hint">AI 추정치예요[\s\S]*?<\/p>/, '') : ''}</div>
+      </fieldset>
+
+      <fieldset class="sheet-group">
+        <legend>칼로리 (직접 고치기)</legend>
         <div class="row">
           <div>
             <label class="label" for="d-intake">먹은 칼로리</label>
@@ -202,16 +220,42 @@ function openSheet(view, date) {
   $('#d-exercise', dlg).addEventListener('input', judgeLine);
   judgeLine();
 
+  $('#d-ai', dlg).addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const food = $('#d-food', dlg).value.trim(), ex = $('#d-ex', dlg).value.trim();
+    if (!food && !ex) return toast('먹은 것이나 운동을 적어주세요');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner dark"></span> AI가 계산하는 중…';
+    try {
+      const saved = await api.saveDay({ date, food_note: food, exercise_note: ex, estimate: true });
+      upsertRecord(saved);
+      syncTodayDraft(date, food, ex);
+      $('#d-intake', dlg).value = saved.intake_kcal ?? '';
+      $('#d-exercise', dlg).value = saved.exercise_kcal ?? '';
+      $('#d-ai-result', dlg).innerHTML = foodResultHtml(saved).replace(/<p class="hint">AI 추정치예요[\s\S]*?<\/p>/, '');
+      judgeLine();
+      if ($('#cal-grid', view)) drawGrid(view, monthInfo(state.calMonth));
+      toast('AI가 계산한 칼로리로 저장했어요');
+    } catch (err) {
+      toast('계산 실패: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'AI로 칼로리 계산';
+    }
+  });
+
   $('#d-save', dlg).addEventListener('click', async () => {
     const intake = num($('#d-intake', dlg).value), exercise = num($('#d-exercise', dlg).value);
     const before = recordOn(date);
     const base = before || { date, weight: null, muscle_mass: null, body_fat_pct: null, mood: '', mood_note: '', medications_taken: [], coach_feedback: null, kcal_goal: null };
-    upsertRecord({ ...base, intake_kcal: intake, exercise_kcal: exercise, kcal_goal: base.kcal_goal ?? num(state.settings.calorie_net_goal) });
+    const food = $('#d-food', dlg).value.trim(), ex = $('#d-ex', dlg).value.trim();
+    syncTodayDraft(date, food, ex);
+    upsertRecord({ ...base, intake_kcal: intake, exercise_kcal: exercise, food_note: food, exercise_note: ex, kcal_goal: base.kcal_goal ?? num(state.settings.calorie_net_goal) });
     dlg.close();
     drawGrid(view, monthInfo(state.calMonth));
     toast('칼로리를 저장했어요');
     try {
-      upsertRecord(await api.saveDay({ date, intake_kcal: intake, exercise_kcal: exercise }));
+      upsertRecord(await api.saveDay({ date, intake_kcal: intake, exercise_kcal: exercise, food_note: food, exercise_note: ex }));
     } catch (err) {
       if (before) upsertRecord(before);
       else state.records = state.records.filter((r) => r.date !== date);
