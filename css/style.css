@@ -491,3 +491,52 @@ body.no-tabbar #view { padding-bottom: 0; }
 .med-save { margin-top: 12px; }
 .send-box { margin-top: 6px; display: flex; flex-direction: column; gap: 6px; }
 .send-box .hint { text-align: center; margin: 0; font-size: 11.5px; }
+/* 하루 흐름 구역 제목 */
+.sec { display: flex; align-items: center; gap: 8px; font-size: 15px; margin: 10px 2px -2px; color: var(--ink); }
+.sec-time { font-family: inherit; font-size: 11px; font-weight: 700; color: #FFFFFF; background: var(--accent); border-radius: 999px; padding: 3px 10px; }
+/* 아침·저녁 피드백 카드 */
+.coach-preview .k-label { font-size: 11px; color: var(--accent2); font-weight: 700; margin-bottom: 2px; }
+.coach-preview .title { display: flex; align-items: center; gap: 6px; }
+.coach-preview .btn { width: 100%; }
+.plan-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.plan-list li { display: flex; gap: 10px; background: var(--card); border-radius: 14px; padding: 10px 12px; }
+.plan-list b { font-size: 12.5px; }
+.plan-list p { font-size: 12.5px; color: var(--muted); line-height: 1.5; margin-top: 2px; }
+.focus { margin-top: 10px; font-size: 12.5px; line-height: 1.5; background: var(--card); border: 1.4px dashed var(--accent2); border-radius: 14px; padding: 10px 12px; }
+.focus b { color: var(--accent2); margin-right: 4px; }
+.tomorrow { margin-top: 12px; background: var(--card); border-radius: 14px; padding: 12px; }
+.tomorrow .t, .tomorrow-card h2 { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--accent); }
+.tomorrow ol, .tomorrow-card ol { margin: 8px 0 0; padding-left: 18px; font-size: 12.5px; line-height: 1.6; }
+.tomorrow-card { background: linear-gradient(135deg, var(--accent-soft), var(--card)); }
+.fb-analysis b { color: var(--ink); margin-right: 4px; }
+/* 식단·운동 기록 목록 */
+.flog-goal { margin-top: 10px; }
+.flog-goal .hint { margin-top: 6px; }
+.progress.over > div { background: linear-gradient(90deg, var(--over), var(--clay)); }
+.flog-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; }
+.flog-item { display: flex; align-items: center; gap: 8px; padding: 9px 2px; border-bottom: 1px dashed var(--stroke); }
+.flog-item .t { width: 38px; flex-shrink: 0; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.flog-item .x { flex: 1; min-width: 0; display: flex; gap: 6px; font-size: 13px; line-height: 1.4; }
+.flog-item .x .ico { color: var(--accent); margin-top: 2px; }
+.flog-item.exercise .x .ico { color: var(--accent2); }
+.flog-item .x small { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+.flog-item .kcal { border: none; background: var(--bg); border-radius: 10px; padding: 5px 8px; font-size: 12.5px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.flog-item .kcal small { font-size: 10px; font-weight: 400; color: var(--muted); margin-left: 2px; }
+.flog-item.exercise .kcal { color: var(--accent2); }
+.flog-item .kcal.busy { display: inline-flex; align-items: center; }
+.flog-item .del { border: none; background: none; color: var(--muted); width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; }
+.flog-item.legacy .x, .flog-empty { font-size: 12.5px; color: var(--muted); }
+.flog-empty { padding: 10px 2px; }
+.flog-add { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.flog-kind { display: flex; gap: 6px; }
+.flog-kind button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 7px; border-radius: 10px; border: 1.2px solid var(--stroke); background: var(--card); color: var(--muted); font-size: 12.5px; }
+.flog-kind button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.flog-row { display: flex; gap: 8px; }
+.flog-row .input { flex: 1; }
+.flog-row .btn { width: auto; padding: 9px 16px; }
+/* 칼로리 처방 접기 */
+.rx-details summary { list-style: none; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; cursor: pointer; font-family: var(--title-font); font-size: 16px; }
+.rx-details summary::-webkit-details-marker { display: none; }
+.rx-details summary::after { content: "펼치기"; font-family: -apple-system, sans-serif; font-size: 11px; color: var(--accent); margin-left: 6px; }
+.rx-details[open] summary::after { content: "접기"; }
+.rx-details summary .meta { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 11.5px; color: var(--muted); margin-left: auto; }

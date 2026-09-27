@@ -1,5 +1,5 @@
 // 건강일기 서비스 워커 — 앱 화면 파일만 캐시 (기록 데이터·GAS 요청은 캐시하지 않음)
-const CACHE = 'health-diary-v5';
+const CACHE = 'health-diary-v6';
 const SHELL = [
   './',
   './index.html',
@@ -7,7 +7,7 @@ const SHELL = [
   './css/style.css',
   './js/app.js', './js/api.js', './js/auth.js', './js/calorie.js', './js/config.js', './js/cycle.js',
   './js/icons.js', './js/mock.js', './js/pwa.js', './js/store.js', './js/utils.js',
-  './js/screens/calendar.js', './js/screens/chat.js', './js/screens/coach.js', './js/screens/common.js',
+  './js/screens/calendar.js', './js/screens/chat.js', './js/screens/coach.js', './js/screens/common.js', './js/screens/foodlog.js',
   './js/screens/journey.js', './js/screens/record.js', './js/screens/settings.js',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png', './icons/favicon-32.png',
 ];

@@ -1,7 +1,7 @@
 // 미리보기 모드: GAS 없이 브라우저 localStorage에 가짜 데이터로 동작 (실제 AI 호출 없음)
 import { todayStr, addDays, cycleDay, daysBetween } from './utils.js';
 
-const KEY = 'mc_preview_db_v3';
+const KEY = 'mc_preview_db_v4';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function seed() {
@@ -94,6 +94,15 @@ function sampleFeedback(mood, note, date) {
       medication: '식후 즉시 먹는 약은 식사 직후에 챙겨 위장 부담을 줄여주세요.',
       routine: '미지근한 물 1.5~2L를 나눠 마시고, 오늘은 12시 전에 잠드는 걸 목표로 해봐요.',
     },
+    day_review: {
+      food: '목표 칼로리 안에서 잘 드셨어요. 저녁 탄수화물이 조금 많았지만 단백질도 챙기셨어요.',
+      exercise: '걷기 기록이 있어서 좋았어요. 식후 걷기는 혈당 안정에도 도움이 돼요.',
+      plan_check: '아침에 정한 "점심 단백질 먼저"를 지키셨어요.',
+    },
+    tomorrow: {
+      title: '내일은 이렇게 해봐요',
+      tips: ['아침을 거르지 말고 삶은 달걀과 채소로 시작하기', '저녁 식사 후 20분 걷기', '잠들기 1시간 전에는 휴대폰 내려놓기'],
+    },
     closing: { title: '골격근량, 그게 진짜 자산이에요', body: '오늘 숫자 하나에 흔들리지 마세요. 엔진은 잘 돌아가고 있어요.' },
     generated_at: `${date}T07:30:00.000Z`,
     preview: true,
@@ -125,10 +134,58 @@ export async function mockCall(action, p) {
       const rec = {
         ...fields, cycle_day: cycleDay(d.settings, p.date), coach_feedback: skipFeedback ? (old.coach_feedback || null) : sampleFeedback(p.mood, p.mood_note, p.date),
         intake_kcal: old.intake_kcal ?? null, exercise_kcal: old.exercise_kcal ?? null, kcal_goal: old.kcal_goal ?? null,
+        morning_feedback: old.morning_feedback || null, food_log: old.food_log || [], exercise_log: old.exercise_log || [],
       };
       d.records = d.records.filter((r) => r.date !== p.date).concat(rec);
       save(d);
       return { record: rec, feedbackError: null };
+    }
+    case 'addLog':
+    case 'updateLog':
+    case 'deleteLog': {
+      let rec = d.records.find((r) => r.date === p.date);
+      if (!rec) {
+        rec = { date: p.date, weight: null, muscle_mass: null, body_fat_pct: null, mood: '', mood_note: '', medications_taken: [], coach_feedback: null, kcal_goal: null };
+        d.records.push(rec);
+      }
+      rec.food_log ||= [];
+      rec.exercise_log ||= [];
+      const list = p.kind === 'exercise' ? rec.exercise_log : rec.food_log;
+      if (action === 'addLog') {
+        // 미리보기용 가짜 판정: 쉼표로 나눈 항목마다 음식 300kcal, 운동 150kcal
+        const parts = p.text.split(/[,+]/).map((x) => x.trim()).filter(Boolean);
+        const per = p.kind === 'exercise' ? 150 : 300;
+        list.push({ id: Math.random().toString(36).slice(2, 10), time: p.time || '', text: p.text, kcal: parts.length * per, items: parts.map((name) => ({ name, amount: '1인분', kcal: per })), note: '' });
+      } else if (action === 'updateLog') {
+        const it = list.find((x) => x.id === p.id);
+        if (it) Object.assign(it, { kcal: p.kcal, edited: true });
+      } else {
+        const i = list.findIndex((x) => x.id === p.id);
+        if (i >= 0) list.splice(i, 1);
+      }
+      const sum = (l) => l.reduce((a, x) => a + x.kcal, 0);
+      rec.intake_kcal = rec.food_log.length ? sum(rec.food_log) : null;
+      rec.exercise_kcal = rec.food_log.length || rec.exercise_log.length ? sum(rec.exercise_log) : null;
+      if (rec.kcal_goal == null) rec.kcal_goal = Number(d.settings.calorie_net_goal) || null;
+      save(d);
+      return rec;
+    }
+    case 'morningFeedback': {
+      const rec = d.records.find((r) => r.date === p.date);
+      if (!rec || rec.weight == null) throw new Error('먼저 오늘 인바디를 저장해주세요');
+      rec.morning_feedback = {
+        title: '밤사이 수분이 빠진 가벼운 아침이에요',
+        analysis: '어제 저녁을 가볍게 드셔서 글리코겐과 함께 붙어 있던 수분이 빠졌어요. 골격근량은 그대로라 대사 엔진은 잘 지켜지고 있어요. (미리보기 예시)',
+        plan: {
+          meals: '아침 400 · 점심 600 · 저녁 500 · 간식 200kcal 정도로 나눠보세요. 점심에 단백질을 넉넉히 드세요.',
+          exercise: '저녁 식사 1시간 뒤 30분 빠르게 걷기가 좋아요. 공복 고강도 운동은 피해주세요.',
+          routine: '물 1.5L를 오전·오후로 나눠 마시고, 식후 약은 식사 직후에 챙겨주세요.',
+        },
+        focus: '점심에 단백질 한 손바닥 먼저 먹기',
+        generated_at: new Date().toISOString(),
+      };
+      save(d);
+      return rec;
     }
     case 'saveDay': {
       let rec = d.records.find((r) => r.date === p.date);
