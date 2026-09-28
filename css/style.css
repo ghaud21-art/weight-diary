@@ -540,3 +540,8 @@ body.no-tabbar #view { padding-bottom: 0; }
 .rx-details summary::after { content: "펼치기"; font-family: -apple-system, sans-serif; font-size: 11px; color: var(--accent); margin-left: 6px; }
 .rx-details[open] summary::after { content: "접기"; }
 .rx-details summary .meta { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 11.5px; color: var(--muted); margin-left: auto; }
+.morning-cmp { margin-top: 12px; background: var(--card); border-radius: 14px; padding: 10px; }
+.morning-cmp .cmp-row { border: none; padding: 6px 4px; }
+.morning-cmp .cmp-row + .cmp-row { border-top: 1px dashed var(--stroke); border-radius: 0; }
+.cmp-cap { font-size: 11px; color: var(--muted); margin: 0 4px 2px; }
+.morning-analysis { margin-top: 10px; font-size: 12.5px; color: var(--ink); line-height: 1.6; }

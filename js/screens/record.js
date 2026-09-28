@@ -1,9 +1,9 @@
 import { api } from '../api.js';
 import { icon } from '../icons.js';
-import { state, activeMeds, morningOn as recordOn, recordOn as dayRecordOn, hasBody, latestRecord, upsertRecord, saveSettings, setMeds } from '../store.js';
-import { $, $$, esc, num, fix1, comma, fmtLong, greeting, movingAvg, debounce, toast, resizeImage } from '../utils.js';
+import { state, activeMeds, morningOn as recordOn, recordOn as dayRecordOn, hasBody, prevRecord, latestRecord, upsertRecord, saveSettings, setMeds } from '../store.js';
+import { $, $$, esc, num, fix1, comma, fmtLong, fmtMD, daysBetween, greeting, movingAvg, debounce, toast, resizeImage } from '../utils.js';
 import { calcPlan, planSummary, safeDateLabel, ACTIVITY } from '../calorie.js';
-import { topbar, previewBanner, timingTone } from './common.js';
+import { topbar, previewBanner, timingTone, deltaChip } from './common.js';
 import { foodLogHtml, bindFoodLog } from './foodlog.js';
 
 // 피드백을 만드는 중인지 (화면을 다시 그려도 유지)
@@ -176,6 +176,27 @@ function medListHtml(d) {
 }
 
 /* ───────── 아침 인바디 피드백: 오늘 하루 계획 ───────── */
+/** 직전 측정 → 오늘 인바디 비교표 */
+function inbodyCompareHtml() {
+  const rec = dayRecordOn(state.today);
+  if (!hasBody(rec)) return '';
+  const prev = prevRecord(state.today);
+  const gap = prev ? daysBetween(prev.date, state.today) : 0;
+  const row = (label, key, unit, pu) => `
+    <div class="cmp-row">
+      <span class="k">${label}</span>
+      <span class="v">${prev?.[key] != null ? fix1(prev[key]) + ' → ' : ''}<strong>${rec[key] != null ? fix1(rec[key]) + unit : '-'}</strong></span>
+      ${deltaChip(rec[key], prev?.[key], pu)}
+    </div>`;
+  return `
+    <div class="cmp morning-cmp">
+      <p class="cmp-cap">${prev ? (gap === 1 ? '어제' : fmtMD(prev.date) + ' (' + gap + '일 전)') + ' → 오늘' : '첫 측정이에요'}</p>
+      ${row('체중', 'weight', 'kg', 'kg')}
+      ${row('골격근량', 'muscle_mass', 'kg', 'kg')}
+      ${row('체지방률', 'body_fat_pct', '%', '%p')}
+    </div>`;
+}
+
 function morningHtml() {
   const rec = dayRecordOn(state.today);
   const fb = rec?.morning_feedback;
@@ -190,9 +211,10 @@ function morningHtml() {
           <span class="badge-ico">${icon.sun()}</span>
           <div style="flex:1;min-width:0">
             <p class="title">아침 인바디 피드백</p>
-            <p class="body">인바디를 저장하고 받아보세요. 오늘 몸 상태를 풀어주고, 끼니·운동·약 타이밍까지 오늘 하루 계획을 세워드려요.</p>
+            <p class="body">인바디를 저장하고 받아보세요. 어제와 비교해 오늘 몸 상태를 풀어주고, 끼니·운동·약 타이밍까지 오늘 하루 계획을 세워드려요.</p>
           </div>
         </div>
+        ${inbodyCompareHtml()}
         <div style="margin-top:12px">${btn('인바디 피드백 받기')}</div>
       </section>`;
   }
@@ -204,9 +226,10 @@ function morningHtml() {
         <div style="flex:1;min-width:0">
           <p class="k-label">아침 인바디 피드백</p>
           <p class="title">${esc(fb.title)}</p>
-          <p class="body">${esc(fb.analysis)}</p>
         </div>
       </div>
+      ${inbodyCompareHtml()}
+      <p class="body morning-analysis">${esc(fb.analysis)}</p>
       <ul class="plan-list" aria-label="오늘 하루 계획">
         <li><span class="badge-ico accent">${icon.fork(14)}</span><div><b>끼니</b><p>${esc(p.meals || '')}</p></div></li>
         <li><span class="badge-ico peach">${icon.flame(14)}</span><div><b>운동</b><p>${esc(p.exercise || '')}</p></div></li>
