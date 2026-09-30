@@ -545,3 +545,11 @@ body.no-tabbar #view { padding-bottom: 0; }
 .morning-cmp .cmp-row + .cmp-row { border-top: 1px dashed var(--stroke); border-radius: 0; }
 .cmp-cap { font-size: 11px; color: var(--muted); margin: 0 4px 2px; }
 .morning-analysis { margin-top: 10px; font-size: 12.5px; color: var(--ink); line-height: 1.6; }
+/* 기록 화면 날짜 이동 */
+.date-nav { display: flex; align-items: center; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.date-nav .icon-btn { width: 32px; height: 32px; border-radius: 10px; }
+.date-nav .icon-btn.flip svg { transform: scaleX(-1); }
+.date-nav .icon-btn:disabled { opacity: 0.35; cursor: default; }
+.date-pick { position: relative; display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border-radius: 10px; background: var(--card); border: 1px solid var(--stroke); font-size: 13px; color: var(--ink); cursor: pointer; }
+.date-pick input { position: absolute; inset: 0; opacity: 0; width: 100%; cursor: pointer; }
+.date-nav .link-btn { font-size: 12.5px; margin-left: 2px; }

@@ -164,7 +164,8 @@ function openSheet(view, date) {
         ${hasBody(rec)
           ? `<p class="sheet-line">체중 <strong>${fix1(rec.weight)}kg</strong> · 골격근 ${fix1(rec.muscle_mass)}kg · 체지방 ${fix1(rec.body_fat_pct)}%${rec.mood ? ` · 마음 ${moods[rec.mood]}` : ''}</p>`
           : '<p class="sheet-line muted">이 날은 인바디 기록이 없어요.</p>'}
-        ${rec?.coach_feedback ? `<a class="link-btn peach" href="#/coach/${date}">이 날의 코치 피드백 보기 →</a>` : ''}
+        <a class="link-btn" href="#/record${date === state.today ? '' : '/' + date}">기록 화면에서 이 날 인바디·약·마음 입력하기 →</a>
+        ${rec?.coach_feedback || rec?.morning_feedback ? `<a class="link-btn peach" href="#/coach/${date}">이 날의 코치 피드백 보기 →</a>` : ''}
       </div>
 
       <fieldset class="sheet-group">

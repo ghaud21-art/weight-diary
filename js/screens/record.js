@@ -1,10 +1,15 @@
 import { api } from '../api.js';
 import { icon } from '../icons.js';
 import { state, activeMeds, morningOn as recordOn, recordOn as dayRecordOn, hasBody, prevRecord, latestRecord, upsertRecord, saveSettings, setMeds } from '../store.js';
-import { $, $$, esc, num, fix1, comma, fmtLong, fmtMD, daysBetween, greeting, movingAvg, debounce, toast, resizeImage } from '../utils.js';
+import { $, $$, esc, num, fix1, comma, fmtLong, fmtMD, addDays, daysBetween, greeting, movingAvg, debounce, toast, resizeImage } from '../utils.js';
 import { calcPlan, planSummary, safeDateLabel, ACTIVITY } from '../calorie.js';
 import { topbar, previewBanner, timingTone, deltaChip } from './common.js';
 import { foodLogHtml, bindFoodLog } from './foodlog.js';
+
+/** 기록 화면에서 보고 있는 날짜 (주소 #/record/yyyy-MM-dd, 없으면 오늘) */
+const D = () => state.recordDate || state.today;
+const loadedMonths = new Set();
+const dayWord = () => (D() === state.today ? '오늘의' : '이 날의');
 
 // 피드백을 만드는 중인지 (화면을 다시 그려도 유지)
 const busy = { morning: false, evening: false };
@@ -16,15 +21,15 @@ const MOODS = [
 ];
 
 function initDraft() {
-  if (state.draft && state.draft.date === state.today) return state.draft;
-  const rec = recordOn(state.today);
-  const kept = readDraft();
+  if (state.draft && state.draft.date === D()) return state.draft;
+  const rec = recordOn(D());
+  const kept = readDraft(D());
   if (kept) {
     state.draft = { ...kept, kcalWeight: null };
     return state.draft;
   }
   state.draft = {
-    date: state.today,
+    date: D(),
     weight: rec?.weight ?? null,
     muscle_mass: rec?.muscle_mass ?? null,
     body_fat_pct: rec?.body_fat_pct ?? null,
@@ -38,23 +43,29 @@ function initDraft() {
 
 const section = (time, title) => `<h3 class="sec"><span class="sec-time">${time}</span>${title}</h3>`;
 
-export function render(view) {
+export function render(view, { arg } = {}) {
+  state.recordDate = /^\d{4}-\d{2}-\d{2}$/.test(arg || '') && arg < state.today ? arg : state.today;
+  if (needsMonth(D())) {
+    view.innerHTML = `${topbar()}<div class="stack" style="padding-top:20px"><div class="skeleton"></div><div class="skeleton"></div></div>`;
+    loadMonth(D()).then(() => { if (view.isConnected) render(view, { arg }); });
+    return;
+  }
   const d = initDraft();
   const s = state.settings;
-  const last = latestRecord();
+  const last = prevRecord(D());
 
   view.innerHTML = `
     ${topbar()}
     <div class="page-title">
-      <h1>${esc(greeting(s.nickname || '회원님'))}</h1>
-      <p>${fmtLong(state.today)}</p>
+      <h1>${D() === state.today ? esc(greeting(s.nickname || '회원님')) : '지난 기록 입력'}</h1>
+      ${dateNavHtml()}
     </div>
     ${previewBanner()}
     <div class="stack">
 
       ${section('아침', '인바디 · 복용약')}
       <section class="card" aria-labelledby="h-inbody">
-        <h2 id="h-inbody">오늘의 인바디</h2>
+        <h2 id="h-inbody">${dayWord()} 인바디</h2>
         <label class="upload" id="upload">
           <span class="ico" id="upload-ico">${icon.camera()}</span>
           <span class="txt" id="upload-txt">인바디 사진을 올려서 자동으로 수치를 읽어와요</span>
@@ -72,7 +83,7 @@ export function render(view) {
       <div id="morning-fb">${morningHtml()}</div>
 
       <section class="card" aria-labelledby="h-med">
-        <h2 id="h-med">오늘의 복용약</h2>
+        <h2 id="h-med">${dayWord()} 복용약</h2>
         <div class="med-list" id="med-list">${medListHtml(d)}</div>
         <form class="med-add" id="med-add">
           <p>약을 직접 추가할게요</p>
@@ -89,10 +100,10 @@ export function render(view) {
       ${section('하루 동안', '먹은 것 · 운동')}
       <section class="card" aria-labelledby="h-food" id="food-card">
         <div class="card-head">
-          <h2 id="h-food">오늘 먹은 것 · 운동</h2>
+          <h2 id="h-food">${D() === state.today ? '오늘' : '이 날'} 먹은 것 · 운동</h2>
           <span class="meta">AI 칼로리 계산</span>
         </div>
-        ${foodLogHtml(state.today)}
+        ${foodLogHtml(D())}
       </section>
 
       <details class="card rx-details" id="kcal-card">
@@ -124,7 +135,7 @@ export function render(view) {
 
       ${section('저녁', '마음 · 하루 마무리')}
       <section class="card" aria-labelledby="h-mood" id="mood-card">
-        <h2 id="h-mood">오늘의 마음</h2>
+        <h2 id="h-mood">${dayWord()} 마음</h2>
         <fieldset class="mood-group">
           <legend class="sr-only">오늘 컨디션 선택</legend>
           ${MOODS.map((m) => `
@@ -145,6 +156,7 @@ export function render(view) {
       <button type="button" class="btn bar-save" data-save data-label="저장">저장</button>
     </div>`;
 
+  bindDateNav(view);
   bindInbody(view);
   bindMood(view);
   bindMeds(view);
@@ -175,13 +187,64 @@ function medListHtml(d) {
     </div>`).join('');
 }
 
+/* ───────── 날짜 이동 ───────── */
+function dateNavHtml() {
+  const isToday = D() === state.today;
+  return `
+    <div class="date-nav">
+      <button type="button" class="icon-btn sm" data-go="-1" aria-label="전날">${icon.back()}</button>
+      <label class="date-pick">
+        <span>${fmtLong(D())}${isToday ? ' · 오늘' : ''}</span>
+        <input type="date" id="date-pick" max="${state.today}" value="${D()}" aria-label="기록할 날짜 고르기">
+      </label>
+      <button type="button" class="icon-btn sm flip" data-go="1" aria-label="다음 날" ${isToday ? 'disabled' : ''}>${icon.back()}</button>
+      ${isToday ? '' : '<button type="button" class="link-btn" data-go="today">오늘로</button>'}
+    </div>`;
+}
+
+/** 다른 날짜로 이동 — 입력 중이던 값은 날짜별로 기기에 남아 있어서 사라지지 않음 */
+function goDate(date) {
+  if (!date || date > state.today) return;
+  location.hash = date === state.today ? '#/record' : '#/record/' + date;
+}
+
+function bindDateNav(view) {
+  $$('[data-go]', view).forEach((b) => b.addEventListener('click', () => {
+    const go = b.dataset.go;
+    goDate(go === 'today' ? state.today : addDays(D(), Number(go)));
+  }));
+  const pick = $('#date-pick', view);
+  pick.addEventListener('change', () => goDate(pick.value));
+  // 날짜 글자를 눌러도 달력이 열리게
+  pick.closest('.date-pick').addEventListener('click', (e) => {
+    if (e.target !== pick && pick.showPicker) { e.preventDefault(); try { pick.showPicker(); } catch {} }
+  });
+}
+
+const monthOf = (date) => date.slice(0, 7);
+function needsMonth(date) {
+  return date < addDays(state.today, -60) && !loadedMonths.has(monthOf(date));
+}
+async function loadMonth(date) {
+  const ym = monthOf(date);
+  const [y, m] = ym.split('-').map(Number);
+  const last = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+  try {
+    const res = await api.getRange(ym + '-01', last);
+    res.records.forEach(upsertRecord);
+  } catch (err) {
+    toast('그 날의 기록을 불러오지 못했어요: ' + err.message);
+  }
+  loadedMonths.add(ym);
+}
+
 /* ───────── 아침 인바디 피드백: 오늘 하루 계획 ───────── */
 /** 직전 측정 → 오늘 인바디 비교표 */
 function inbodyCompareHtml() {
-  const rec = dayRecordOn(state.today);
+  const rec = dayRecordOn(D());
   if (!hasBody(rec)) return '';
-  const prev = prevRecord(state.today);
-  const gap = prev ? daysBetween(prev.date, state.today) : 0;
+  const prev = prevRecord(D());
+  const gap = prev ? daysBetween(prev.date, D()) : 0;
   const row = (label, key, unit, pu) => `
     <div class="cmp-row">
       <span class="k">${label}</span>
@@ -190,7 +253,7 @@ function inbodyCompareHtml() {
     </div>`;
   return `
     <div class="cmp morning-cmp">
-      <p class="cmp-cap">${prev ? (gap === 1 ? '어제' : fmtMD(prev.date) + ' (' + gap + '일 전)') + ' → 오늘' : '첫 측정이에요'}</p>
+      <p class="cmp-cap">${prev ? (gap === 1 ? '전날' : fmtMD(prev.date) + ' (' + gap + '일 전)') + ' → ' + (D() === state.today ? '오늘' : fmtMD(D())) : '첫 측정이에요'}</p>
       ${row('체중', 'weight', 'kg', 'kg')}
       ${row('골격근량', 'muscle_mass', 'kg', 'kg')}
       ${row('체지방률', 'body_fat_pct', '%', '%p')}
@@ -198,7 +261,7 @@ function inbodyCompareHtml() {
 }
 
 function morningHtml() {
-  const rec = dayRecordOn(state.today);
+  const rec = dayRecordOn(D());
   const fb = rec?.morning_feedback;
   const btn = (label) => `<button type="button" class="btn" id="morning-btn">${icon.sun(15)} ${label}</button>`;
   if (busy.morning) {
@@ -242,7 +305,7 @@ function morningHtml() {
 
 /* ───────── 저녁 하루 마무리 피드백 ───────── */
 function eveningHtml() {
-  const rec = dayRecordOn(state.today);
+  const rec = dayRecordOn(D());
   const fb = rec?.coach_feedback;
   const label = fb ? '하루 마무리 피드백 다시 받기' : '하루 마무리 피드백 받기';
   const button = `
@@ -270,7 +333,7 @@ function eveningHtml() {
           <ol>${tips.map((t) => `<li>${esc(t)}</li>`).join('')}</ol>
         </div>` : ''}
       <div class="links">
-        <a class="link-btn peach" href="#/coach">자세히 보기 →</a>
+        <a class="link-btn peach" href="#/coach${D() === state.today ? '' : '/' + D()}">자세히 보기 →</a>
         <a class="link-btn" href="#/chat">${icon.chat()} AI 코치와 대화하기</a>
       </div>
     </section>
@@ -448,17 +511,17 @@ function bindFeedbackButtons(view) {
 async function requestMorning(view) {
   if (busy.morning) return;
   const d = state.draft;
-  if (d.weight == null && d.body_fat_pct == null && !hasBody(dayRecordOn(state.today))) {
+  if (d.weight == null && d.body_fat_pct == null && !hasBody(dayRecordOn(D()))) {
     toast('먼저 오늘 인바디를 입력해주세요');
     return $('#h-inbody', view)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
   busy.morning = true;
   paintFeedback(view);
   try {
-    if (isDirty() || !hasBody(dayRecordOn(state.today))) {
+    if (isDirty() || !hasBody(dayRecordOn(D()))) {
       if (!(await saveDraft(view))) return;
     }
-    upsertRecord(await api.morningFeedback(state.today));
+    upsertRecord(await api.morningFeedback(D()));
     toast('오늘 하루 계획이 도착했어요');
   } catch (err) {
     toast('피드백을 만들지 못했어요: ' + err.message);
@@ -477,10 +540,10 @@ async function requestEvening(view) {
   busy.evening = true;
   paintFeedback(view);
   try {
-    if (isDirty() || !recordOn(state.today)) {
+    if (isDirty() || !recordOn(D())) {
       if (!(await saveDraft(view))) return;
     }
-    upsertRecord(await api.regenerateFeedback(state.today));
+    upsertRecord(await api.regenerateFeedback(D()));
     toast('하루 마무리 피드백이 도착했어요');
   } catch (err) {
     toast('피드백을 만들지 못했어요: ' + err.message);
@@ -675,12 +738,12 @@ function kcalHtml(p, input) {
 }
 
 /* ───────── 저장 안 한 변경 표시 · 입력 중인 값 보관 ───────── */
-const DRAFT_KEY = 'hd_draft';
+const DRAFT_KEY = 'hd_drafts';
 const sameNum = (a, b) => (a == null ? null : Number(a)) === (b == null ? null : Number(b));
 
 function isDirty() {
   const d = state.draft;
-  const r = recordOn(state.today);
+  const r = recordOn(d.date);
   const taken = (list) => [...(list || [])].sort().join('|');
   if (!r) return d.weight != null || d.muscle_mass != null || d.body_fat_pct != null || !!d.mood || !!d.mood_note.trim();
   return !sameNum(d.weight, r.weight) || !sameNum(d.muscle_mass, r.muscle_mass) || !sameNum(d.body_fat_pct, r.body_fat_pct) ||
@@ -689,15 +752,22 @@ function isDirty() {
 
 /** 입력이 바뀔 때마다: 기기에 임시 보관 + 저장 안 됨 표시 갱신 */
 function markDirty(view) {
-  try { localStorage.setItem(DRAFT_KEY, JSON.stringify(state.draft)); } catch {}
+  try {
+    const all = JSON.parse(localStorage.getItem(DRAFT_KEY) || '{}');
+    all[state.draft.date] = state.draft;
+    // 최근 30일 것만 보관
+    const cutoff = addDays(state.today, -30);
+    Object.keys(all).forEach((k) => { if (k < cutoff) delete all[k]; });
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(all));
+  } catch {}
   const bar = $('#dirty-bar', view);
   if (bar) bar.hidden = !isDirty();
 }
 
-function readDraft() {
+function readDraft(date) {
   try {
-    const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
-    return d && d.date === state.today ? d : null;
+    const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || '{}')[date];
+    return d && d.date === date ? d : null;
   } catch {
     return null;
   }

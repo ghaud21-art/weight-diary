@@ -59,6 +59,7 @@ export function clearCache() {
   try {
     localStorage.removeItem(CACHE_KEY);
     localStorage.removeItem('hd_draft');
+    localStorage.removeItem('hd_drafts');
   } catch {}
 }
 
